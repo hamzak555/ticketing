@@ -262,13 +262,32 @@ export function EventForm({ businessId, initialData }: EventFormProps) {
 
             <div className="space-y-2">
               <Label htmlFor="event_time">Event Time</Label>
-              <Input
-                id="event_time"
-                type="time"
-                value={formData.event_time}
-                onChange={(e) => setFormData({ ...formData, event_time: e.target.value })}
-                placeholder="e.g., 19:00"
-              />
+              <div
+                onClick={(e) => {
+                  const input = document.getElementById('event_time') as HTMLInputElement
+                  if (input) {
+                    input.focus()
+                    // Use showPicker if available (modern browsers)
+                    if ('showPicker' in input) {
+                      try {
+                        input.showPicker()
+                      } catch (error) {
+                        // Fallback to just focusing if showPicker fails
+                      }
+                    }
+                  }
+                }}
+                className="cursor-pointer"
+              >
+                <Input
+                  id="event_time"
+                  type="time"
+                  value={formData.event_time}
+                  onChange={(e) => setFormData({ ...formData, event_time: e.target.value })}
+                  placeholder="e.g., 19:00"
+                  className="cursor-pointer"
+                />
+              </div>
             </div>
           </div>
 
