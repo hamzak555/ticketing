@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { CheckCircle2, XCircle, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 
 interface PlatformSettings {
   platform_fee_type: 'flat' | 'percentage' | 'higher_of_both'
@@ -33,7 +34,6 @@ export default function StripeSettingsPage() {
   const [isConnecting, setIsConnecting] = useState(false)
   const [isUpdatingFees, setIsUpdatingFees] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [feeUpdateSuccess, setFeeUpdateSuccess] = useState(false)
 
   const success = searchParams.get('success')
   const refresh = searchParams.get('refresh')
@@ -81,7 +81,6 @@ export default function StripeSettingsPage() {
   const handleUpdateStripeFee = async (feePayer: 'customer' | 'business') => {
     setIsUpdatingFees(true)
     setError(null)
-    setFeeUpdateSuccess(false)
 
     try {
       const response = await fetch(`/api/businesses/${businessId}`, {
@@ -95,10 +94,10 @@ export default function StripeSettingsPage() {
       }
 
       setStatus(prev => prev ? { ...prev, stripe_fee_payer: feePayer } : null)
-      setFeeUpdateSuccess(true)
-      setTimeout(() => setFeeUpdateSuccess(false), 3000)
+      toast.success('Fee settings updated successfully!')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
+      toast.error('Failed to update fee settings')
     } finally {
       setIsUpdatingFees(false)
     }
@@ -107,7 +106,6 @@ export default function StripeSettingsPage() {
   const handleUpdatePlatformFee = async (feePayer: 'customer' | 'business') => {
     setIsUpdatingFees(true)
     setError(null)
-    setFeeUpdateSuccess(false)
 
     try {
       const response = await fetch(`/api/businesses/${businessId}`, {
@@ -121,10 +119,10 @@ export default function StripeSettingsPage() {
       }
 
       setStatus(prev => prev ? { ...prev, platform_fee_payer: feePayer } : null)
-      setFeeUpdateSuccess(true)
-      setTimeout(() => setFeeUpdateSuccess(false), 3000)
+      toast.success('Fee settings updated successfully!')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
+      toast.error('Failed to update fee settings')
     } finally {
       setIsUpdatingFees(false)
     }
@@ -374,14 +372,6 @@ export default function StripeSettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-8">
-          {feeUpdateSuccess && (
-            <div className="p-4 bg-green-500/10 border border-green-500 rounded-md">
-              <p className="text-sm text-green-600 dark:text-green-400">
-                Fee settings updated successfully!
-              </p>
-            </div>
-          )}
-
           {/* Two-column layout for fee settings */}
           <div className="grid md:grid-cols-2 gap-6">
             {/* Stripe Processing Fees */}
