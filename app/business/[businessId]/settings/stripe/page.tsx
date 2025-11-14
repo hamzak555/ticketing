@@ -147,6 +147,78 @@ export default function StripeSettingsPage() {
     }
   }
 
+  const calculatePlatformFee = (ticketPrice: number) => {
+    if (!status?.platform_settings) return 5.0 // Default fallback
+
+    const settings = status.platform_settings
+    const flatFee = settings.flat_fee_amount
+    const percentageFee = (ticketPrice * settings.percentage_fee) / 100
+
+    switch (settings.platform_fee_type) {
+      case 'flat':
+        return flatFee
+      case 'percentage':
+        return percentageFee
+      case 'higher_of_both':
+        return Math.max(flatFee, percentageFee)
+      default:
+        return 5.0
+    }
+  }
+
+  const calculateStripeFee = (amount: number) => {
+    return (amount * 0.029) + 0.30
+  }
+
+  const getExampleScenarios = () => {
+    const ticketPrice = 100
+    const platformFee = calculatePlatformFee(ticketPrice)
+
+    // Scenario 1: Customer pays both
+    const scenario1_subtotal = ticketPrice
+    const scenario1_platform = platformFee
+    const scenario1_stripe = calculateStripeFee(scenario1_subtotal + scenario1_platform)
+    const scenario1_total = scenario1_subtotal + scenario1_platform + scenario1_stripe
+    const scenario1_business = ticketPrice
+
+    // Scenario 2: Business pays both
+    const scenario2_total = ticketPrice
+    const scenario2_stripe = calculateStripeFee(ticketPrice)
+    const scenario2_business = ticketPrice - platformFee - scenario2_stripe
+
+    // Scenario 3: Customer pays Stripe only
+    const scenario3_subtotal = ticketPrice
+    const scenario3_stripe = calculateStripeFee(ticketPrice)
+    const scenario3_total = ticketPrice + scenario3_stripe
+    const scenario3_business = ticketPrice - platformFee
+
+    // Scenario 4: Customer pays platform only
+    const scenario4_subtotal = ticketPrice
+    const scenario4_platform = platformFee
+    const scenario4_total = ticketPrice + platformFee
+    const scenario4_stripe = calculateStripeFee(scenario4_total)
+    const scenario4_business = ticketPrice - scenario4_stripe
+
+    return {
+      customerPaysBoth: {
+        customerPays: scenario1_total,
+        businessReceives: scenario1_business,
+      },
+      businessPaysBoth: {
+        customerPays: scenario2_total,
+        businessReceives: scenario2_business,
+      },
+      customerPaysStripe: {
+        customerPays: scenario3_total,
+        businessReceives: scenario3_business,
+      },
+      customerPaysPlatform: {
+        customerPays: scenario4_total,
+        businessReceives: scenario4_business,
+      },
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -438,22 +510,37 @@ export default function StripeSettingsPage() {
           <div className="p-4 bg-muted rounded-lg">
             <h4 className="font-medium text-sm mb-3">Example Scenarios (for $100 ticket)</h4>
             <div className="space-y-2 text-xs">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Customer pays both:</span>
-                <span className="font-medium">Customer pays ~$108 • You receive $100</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Business pays both:</span>
-                <span className="font-medium">Customer pays $100 • You receive ~$92</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Customer pays Stripe only:</span>
-                <span className="font-medium">Customer pays ~$103 • You receive ~$95</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Customer pays platform only:</span>
-                <span className="font-medium">Customer pays ~$105 • You receive ~$97</span>
-              </div>
+              {(() => {
+                const scenarios = getExampleScenarios()
+                return (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Customer pays both:</span>
+                      <span className="font-medium">
+                        Customer pays ${scenarios.customerPaysBoth.customerPays.toFixed(2)} • You receive ${scenarios.customerPaysBoth.businessReceives.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Business pays both:</span>
+                      <span className="font-medium">
+                        Customer pays ${scenarios.businessPaysBoth.customerPays.toFixed(2)} • You receive ${scenarios.businessPaysBoth.businessReceives.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Customer pays Stripe only:</span>
+                      <span className="font-medium">
+                        Customer pays ${scenarios.customerPaysStripe.customerPays.toFixed(2)} • You receive ${scenarios.customerPaysStripe.businessReceives.toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Customer pays platform only:</span>
+                      <span className="font-medium">
+                        Customer pays ${scenarios.customerPaysPlatform.customerPays.toFixed(2)} • You receive ${scenarios.customerPaysPlatform.businessReceives.toFixed(2)}
+                      </span>
+                    </div>
+                  </>
+                )
+              })()}
             </div>
           </div>
         </CardContent>
