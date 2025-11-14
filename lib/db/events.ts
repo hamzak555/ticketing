@@ -209,57 +209,41 @@ export async function updateTicketAvailability(
 
 /**
  * Get ticket sales breakdown for an event
+ * Calculates sold tickets from ticket type availability
  */
 export async function getEventTicketSales(eventId: string) {
   const supabase = await createServerClient()
 
-  // Get all orders for this event
-  const { data: orders, error } = await supabase
-    .from('orders')
-    .select('id, quantity, ticket_type_id')
+  // Get ticket types for this event
+  const { data: ticketTypes, error } = await supabase
+    .from('ticket_types')
+    .select('id, name, total_quantity, available_quantity, is_active')
     .eq('event_id', eventId)
-    .eq('status', 'completed')
 
   if (error) throw error
 
-  // Calculate totals
+  // Calculate totals from ticket types
   let totalSold = 0
-  const ticketTypeBreakdown: Record<string, { name: string; quantity: number }> = {}
+  const breakdown: Array<{ name: string; quantity: number }> = []
 
-  // Get ticket type names
-  const { data: ticketTypes } = await supabase
-    .from('ticket_types')
-    .select('id, name')
-    .eq('event_id', eventId)
+  if (ticketTypes && ticketTypes.length > 0) {
+    ticketTypes.forEach(tt => {
+      if (tt.is_active) {
+        const soldQuantity = tt.total_quantity - tt.available_quantity
+        totalSold += soldQuantity
 
-  const ticketTypeMap = new Map(ticketTypes?.map(tt => [tt.id, tt.name]) || [])
-
-  for (const order of orders || []) {
-    totalSold += order.quantity
-
-    if (order.ticket_type_id) {
-      const typeName = ticketTypeMap.get(order.ticket_type_id) || 'Unknown Type'
-      if (!ticketTypeBreakdown[order.ticket_type_id]) {
-        ticketTypeBreakdown[order.ticket_type_id] = {
-          name: typeName,
-          quantity: 0
+        if (soldQuantity > 0) {
+          breakdown.push({
+            name: tt.name,
+            quantity: soldQuantity
+          })
         }
       }
-      ticketTypeBreakdown[order.ticket_type_id].quantity += order.quantity
-    } else {
-      // Legacy tickets without type
-      if (!ticketTypeBreakdown['legacy']) {
-        ticketTypeBreakdown['legacy'] = {
-          name: 'General Admission',
-          quantity: 0
-        }
-      }
-      ticketTypeBreakdown['legacy'].quantity += order.quantity
-    }
+    })
   }
 
   return {
     totalSold,
-    breakdown: Object.values(ticketTypeBreakdown)
+    breakdown
   }
 }
