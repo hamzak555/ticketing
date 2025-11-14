@@ -93,7 +93,7 @@ export async function GET(
     // Get business details
     const { data: business, error: businessError } = await supabase
       .from('businesses')
-      .select('stripe_account_id, stripe_onboarding_complete, fee_payer')
+      .select('stripe_account_id, stripe_onboarding_complete, stripe_fee_payer, platform_fee_payer')
       .eq('id', businessId)
       .single()
 
@@ -108,7 +108,8 @@ export async function GET(
       return NextResponse.json({
         connected: false,
         onboarding_complete: false,
-        fee_payer: business.fee_payer || 'customer',
+        stripe_fee_payer: business.stripe_fee_payer || 'customer',
+        platform_fee_payer: business.platform_fee_payer || 'customer',
       })
     }
 
@@ -130,7 +131,8 @@ export async function GET(
       onboarding_complete: onboardingComplete,
       charges_enabled: account.charges_enabled,
       payouts_enabled: account.payouts_enabled,
-      fee_payer: business.fee_payer || 'customer',
+      stripe_fee_payer: business.stripe_fee_payer || 'customer',
+      platform_fee_payer: business.platform_fee_payer || 'customer',
     })
   } catch (error) {
     console.error('Stripe status check error:', error)

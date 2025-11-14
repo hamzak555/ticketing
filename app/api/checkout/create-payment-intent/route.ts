@@ -143,18 +143,26 @@ export async function POST(request: NextRequest) {
     const platformFeeInDollars = calculatePlatformFee(subtotalInDollars / totalTickets, totalTickets, platformSettings)
     const platformFeeInCents = Math.round(platformFeeInDollars * 100)
 
-    // Calculate the final charge amount based on who pays fees
-    let finalChargeAmount = totalAmount + platformFeeInCents
+    // Start with ticket amount after discount
+    let finalChargeAmount = totalAmount
+    let platformFeeForCustomer = 0
     let stripeFeeForCustomer = 0
 
-    if (event.businesses.fee_payer === 'customer') {
-      // Customer pays Stripe fees - add them to the charge
-      const stripeFeeInDollars = calculateStripeFee((totalAmount + platformFeeInCents) / 100)
-      stripeFeeForCustomer = Math.round(stripeFeeInDollars * 100)
-      finalChargeAmount = totalAmount + platformFeeInCents + stripeFeeForCustomer
+    // Add platform fee if customer pays it
+    if (event.businesses.platform_fee_payer === 'customer') {
+      platformFeeForCustomer = platformFeeInCents
+      finalChargeAmount += platformFeeInCents
     }
-    // If business pays fees, customer only pays: subtotal - discount + platformFee
-    // Stripe will deduct their fee from this amount automatically
+
+    // Add Stripe fee if customer pays it
+    if (event.businesses.stripe_fee_payer === 'customer') {
+      const stripeFeeInDollars = calculateStripeFee(finalChargeAmount / 100)
+      stripeFeeForCustomer = Math.round(stripeFeeInDollars * 100)
+      finalChargeAmount += stripeFeeForCustomer
+    }
+
+    // Application fee is always the platform fee (whether customer or business pays it)
+    // This ensures we collect our fee from the transaction
 
     // Create Stripe PaymentIntent
     const paymentIntent = await stripe.paymentIntents.create({
@@ -177,8 +185,10 @@ export async function POST(request: NextRequest) {
         customerPhone: customerPhone || '',
         // Store fee information
         platformFee: platformFeeInDollars.toFixed(2),
+        platformFeeForCustomer: (platformFeeForCustomer / 100).toFixed(2),
         stripeFee: (stripeFeeForCustomer / 100).toFixed(2),
-        feePayer: event.businesses.fee_payer,
+        stripeFeePayer: event.businesses.stripe_fee_payer,
+        platformFeePayer: event.businesses.platform_fee_payer,
         // Store promo code information if applied
         ...(promoCode ? {
           promoCodeId: promoCode.id,

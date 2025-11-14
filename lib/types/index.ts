@@ -20,7 +20,8 @@ export interface Business {
   is_active: boolean
   stripe_account_id: string | null // Stripe Connect account ID
   stripe_onboarding_complete: boolean
-  fee_payer: 'customer' | 'business' // Who pays the processing fees
+  stripe_fee_payer: 'customer' | 'business' // Who pays the Stripe processing fees
+  platform_fee_payer: 'customer' | 'business' // Who pays the platform fees
   created_at: string
   updated_at: string
 }

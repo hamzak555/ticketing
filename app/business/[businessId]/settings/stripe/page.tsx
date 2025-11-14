@@ -12,7 +12,8 @@ interface StripeStatus {
   onboarding_complete: boolean
   charges_enabled?: boolean
   payouts_enabled?: boolean
-  fee_payer?: 'customer' | 'business'
+  stripe_fee_payer?: 'customer' | 'business'
+  platform_fee_payer?: 'customer' | 'business'
 }
 
 export default function StripeSettingsPage() {
@@ -70,7 +71,7 @@ export default function StripeSettingsPage() {
     }
   }
 
-  const handleUpdateFeePayer = async (feePayer: 'customer' | 'business') => {
+  const handleUpdateStripeFee = async (feePayer: 'customer' | 'business') => {
     setIsUpdatingFees(true)
     setError(null)
     setFeeUpdateSuccess(false)
@@ -79,14 +80,40 @@ export default function StripeSettingsPage() {
       const response = await fetch(`/api/businesses/${businessId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fee_payer: feePayer }),
+        body: JSON.stringify({ stripe_fee_payer: feePayer }),
       })
 
       if (!response.ok) {
-        throw new Error('Failed to update fee settings')
+        throw new Error('Failed to update Stripe fee settings')
       }
 
-      setStatus(prev => prev ? { ...prev, fee_payer: feePayer } : null)
+      setStatus(prev => prev ? { ...prev, stripe_fee_payer: feePayer } : null)
+      setFeeUpdateSuccess(true)
+      setTimeout(() => setFeeUpdateSuccess(false), 3000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred')
+    } finally {
+      setIsUpdatingFees(false)
+    }
+  }
+
+  const handleUpdatePlatformFee = async (feePayer: 'customer' | 'business') => {
+    setIsUpdatingFees(true)
+    setError(null)
+    setFeeUpdateSuccess(false)
+
+    try {
+      const response = await fetch(`/api/businesses/${businessId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform_fee_payer: feePayer }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to update platform fee settings')
+      }
+
+      setStatus(prev => prev ? { ...prev, platform_fee_payer: feePayer } : null)
       setFeeUpdateSuccess(true)
       setTimeout(() => setFeeUpdateSuccess(false), 3000)
     } catch (err) {
@@ -247,10 +274,10 @@ export default function StripeSettingsPage() {
         <CardHeader>
           <CardTitle>Processing Fee Settings</CardTitle>
           <CardDescription>
-            Choose who pays the Stripe and platform processing fees
+            Configure who pays each type of processing fee
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-8">
           {feeUpdateSuccess && (
             <div className="p-4 bg-green-500/10 border border-green-500 rounded-md">
               <p className="text-sm text-green-600 dark:text-green-400">
@@ -259,62 +286,123 @@ export default function StripeSettingsPage() {
             </div>
           )}
 
+          {/* Stripe Processing Fees */}
           <div className="space-y-4">
-            <Label className="text-base">Who pays the processing fees?</Label>
+            <div>
+              <Label className="text-base font-semibold">Stripe Processing Fees</Label>
+              <p className="text-sm text-muted-foreground mt-1">2.9% + $0.30 per transaction</p>
+            </div>
             <div className="space-y-3">
               <button
-                onClick={() => handleUpdateFeePayer('customer')}
+                onClick={() => handleUpdateStripeFee('customer')}
                 disabled={isUpdatingFees}
                 className={`w-full text-left p-4 rounded-lg border-2 transition-colors ${
-                  status?.fee_payer === 'customer'
+                  status?.stripe_fee_payer === 'customer'
                     ? 'border-primary bg-primary/5'
                     : 'border-border hover:border-primary/50'
                 } ${isUpdatingFees ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
               >
                 <div className="flex items-start gap-3">
                   <div className={`mt-1 h-5 w-5 rounded-full border-2 flex items-center justify-center ${
-                    status?.fee_payer === 'customer' ? 'border-primary' : 'border-muted-foreground'
+                    status?.stripe_fee_payer === 'customer' ? 'border-primary' : 'border-muted-foreground'
                   }`}>
-                    {status?.fee_payer === 'customer' && (
+                    {status?.stripe_fee_payer === 'customer' && (
                       <div className="h-2.5 w-2.5 rounded-full bg-primary" />
                     )}
                   </div>
                   <div className="flex-1">
-                    <p className="font-medium">Customer Pays Fees (Recommended)</p>
+                    <p className="font-medium">Customer Pays Stripe Fees</p>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Processing fees are added to the ticket price during checkout. You receive the full ticket amount minus only your net cost.
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Example: $100 ticket → Customer pays $103.20 → You receive ~$100
+                      Stripe fees are added to the checkout total
                     </p>
                   </div>
                 </div>
               </button>
 
               <button
-                onClick={() => handleUpdateFeePayer('business')}
+                onClick={() => handleUpdateStripeFee('business')}
                 disabled={isUpdatingFees}
                 className={`w-full text-left p-4 rounded-lg border-2 transition-colors ${
-                  status?.fee_payer === 'business'
+                  status?.stripe_fee_payer === 'business'
                     ? 'border-primary bg-primary/5'
                     : 'border-border hover:border-primary/50'
                 } ${isUpdatingFees ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
               >
                 <div className="flex items-start gap-3">
                   <div className={`mt-1 h-5 w-5 rounded-full border-2 flex items-center justify-center ${
-                    status?.fee_payer === 'business' ? 'border-primary' : 'border-muted-foreground'
+                    status?.stripe_fee_payer === 'business' ? 'border-primary' : 'border-muted-foreground'
                   }`}>
-                    {status?.fee_payer === 'business' && (
+                    {status?.stripe_fee_payer === 'business' && (
                       <div className="h-2.5 w-2.5 rounded-full bg-primary" />
                     )}
                   </div>
                   <div className="flex-1">
-                    <p className="font-medium">Business Pays Fees</p>
+                    <p className="font-medium">Business Pays Stripe Fees</p>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Customer pays only the ticket price. Processing fees are deducted from your revenue.
+                      Stripe fees are deducted from your revenue
                     </p>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Example: $100 ticket → Customer pays $100 → You receive ~$96.80
+                  </div>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <div className="border-t pt-6" />
+
+          {/* Platform Fees */}
+          <div className="space-y-4">
+            <div>
+              <Label className="text-base font-semibold">Platform Fees</Label>
+              <p className="text-sm text-muted-foreground mt-1">Set by platform administrator</p>
+            </div>
+            <div className="space-y-3">
+              <button
+                onClick={() => handleUpdatePlatformFee('customer')}
+                disabled={isUpdatingFees}
+                className={`w-full text-left p-4 rounded-lg border-2 transition-colors ${
+                  status?.platform_fee_payer === 'customer'
+                    ? 'border-primary bg-primary/5'
+                    : 'border-border hover:border-primary/50'
+                } ${isUpdatingFees ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className={`mt-1 h-5 w-5 rounded-full border-2 flex items-center justify-center ${
+                    status?.platform_fee_payer === 'customer' ? 'border-primary' : 'border-muted-foreground'
+                  }`}>
+                    {status?.platform_fee_payer === 'customer' && (
+                      <div className="h-2.5 w-2.5 rounded-full bg-primary" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium">Customer Pays Platform Fees</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Platform fees are added to the checkout total
+                    </p>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => handleUpdatePlatformFee('business')}
+                disabled={isUpdatingFees}
+                className={`w-full text-left p-4 rounded-lg border-2 transition-colors ${
+                  status?.platform_fee_payer === 'business'
+                    ? 'border-primary bg-primary/5'
+                    : 'border-border hover:border-primary/50'
+                } ${isUpdatingFees ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className={`mt-1 h-5 w-5 rounded-full border-2 flex items-center justify-center ${
+                    status?.platform_fee_payer === 'business' ? 'border-primary' : 'border-muted-foreground'
+                  }`}>
+                    {status?.platform_fee_payer === 'business' && (
+                      <div className="h-2.5 w-2.5 rounded-full bg-primary" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium">Business Pays Platform Fees</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Platform fees are deducted from your revenue
                     </p>
                   </div>
                 </div>
@@ -323,11 +411,25 @@ export default function StripeSettingsPage() {
           </div>
 
           <div className="p-4 bg-muted rounded-lg">
-            <h4 className="font-medium text-sm mb-2">Fee Breakdown</h4>
-            <ul className="text-sm space-y-1">
-              <li className="text-muted-foreground">• Stripe processing: 2.9% + $0.30 per transaction</li>
-              <li className="text-muted-foreground">• Platform fee: Set by platform admin</li>
-            </ul>
+            <h4 className="font-medium text-sm mb-3">Example Scenarios (for $100 ticket)</h4>
+            <div className="space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Customer pays both:</span>
+                <span className="font-medium">Customer pays ~$108 • You receive $100</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Business pays both:</span>
+                <span className="font-medium">Customer pays $100 • You receive ~$92</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Customer pays Stripe only:</span>
+                <span className="font-medium">Customer pays ~$103 • You receive ~$95</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Customer pays platform only:</span>
+                <span className="font-medium">Customer pays ~$105 • You receive ~$97</span>
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>

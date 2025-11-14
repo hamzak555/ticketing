@@ -33,7 +33,8 @@ interface Business {
   slug: string
   stripe_account_id: string | null
   stripe_onboarding_complete: boolean
-  fee_payer: 'customer' | 'business'
+  stripe_fee_payer: 'customer' | 'business'
+  platform_fee_payer: 'customer' | 'business'
 }
 
 interface TicketType {
@@ -356,47 +357,50 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
   }
 
   const getPlatformFee = () => {
-    if (!platformSettings) return 0
+    if (!platformSettings || !business) return 0
 
     const subtotal = calculateTotal()
     const totalTickets = getTotalTicketCount()
 
     if (totalTickets === 0) return 0
 
-    const ticketPrice = subtotal / totalTickets
-
+    let fee = 0
     switch (platformSettings.platform_fee_type) {
       case 'flat':
-        return platformSettings.flat_fee_amount
+        fee = platformSettings.flat_fee_amount
+        break
 
       case 'percentage':
-        return (subtotal * platformSettings.percentage_fee) / 100
+        fee = (subtotal * platformSettings.percentage_fee) / 100
+        break
 
       case 'higher_of_both': {
         const flatFee = platformSettings.flat_fee_amount
         const percentageFee = (subtotal * platformSettings.percentage_fee) / 100
-        return Math.max(flatFee, percentageFee)
+        fee = Math.max(flatFee, percentageFee)
+        break
       }
 
       default:
-        return 0
+        fee = 0
     }
+
+    // Only return fee if customer pays platform fees
+    return business.platform_fee_payer === 'customer' ? fee : 0
   }
 
   const getStripeFee = () => {
     if (!business) return 0
 
+    // Only show Stripe fee if customer pays it
+    if (business.stripe_fee_payer !== 'customer') return 0
+
     const subtotal = calculateTotal()
     const discount = getDiscountAmount()
     const platformFee = getPlatformFee()
 
-    if (business.fee_payer === 'customer') {
-      // Calculate Stripe fee on the total amount including platform fee
-      return calculateStripeFee(subtotal - discount + platformFee)
-    } else {
-      // Business pays fees - customer doesn't see Stripe fee added
-      return 0
-    }
+    // Calculate Stripe fee on the amount customer will pay
+    return calculateStripeFee(subtotal - discount + platformFee)
   }
 
   const handleApplyPromoCode = async () => {
@@ -904,9 +908,11 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
                                   <span className="font-medium">${stripeFee.toFixed(2)}</span>
                                 </div>
                               )}
-                              {stripeFee === 0 && business?.fee_payer === 'business' && (
+                              {(business?.stripe_fee_payer === 'business' || business?.platform_fee_payer === 'business') && (
                                 <p className="text-xs text-muted-foreground mt-2 pt-2 border-t">
-                                  Stripe fees are covered by {business.name}
+                                  {business.stripe_fee_payer === 'business' && business.platform_fee_payer === 'business' && 'All fees covered by ' + business.name}
+                                  {business.stripe_fee_payer === 'business' && business.platform_fee_payer === 'customer' && 'Stripe fees covered by ' + business.name}
+                                  {business.stripe_fee_payer === 'customer' && business.platform_fee_payer === 'business' && 'Platform fees covered by ' + business.name}
                                 </p>
                               )}
                             </div>

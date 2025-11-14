@@ -21,10 +21,18 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       )
     }
 
-    // Validate fee_payer if it's being updated
-    if (body.fee_payer && !['customer', 'business'].includes(body.fee_payer)) {
+    // Validate stripe_fee_payer if it's being updated
+    if (body.stripe_fee_payer && !['customer', 'business'].includes(body.stripe_fee_payer)) {
       return NextResponse.json(
-        { error: 'Invalid fee_payer value. Must be "customer" or "business"' },
+        { error: 'Invalid stripe_fee_payer value. Must be "customer" or "business"' },
+        { status: 400 }
+      )
+    }
+
+    // Validate platform_fee_payer if it's being updated
+    if (body.platform_fee_payer && !['customer', 'business'].includes(body.platform_fee_payer)) {
+      return NextResponse.json(
+        { error: 'Invalid platform_fee_payer value. Must be "customer" or "business"' },
         { status: 400 }
       )
     }
