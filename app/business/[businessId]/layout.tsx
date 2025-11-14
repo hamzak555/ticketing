@@ -78,6 +78,11 @@ export default async function BusinessLayout({ children, params }: BusinessLayou
               <span className="ml-2">Payment Settings</span>
             </Link>
           </Button>
+          <Button variant="ghost" asChild className="w-full justify-start">
+            <Link href={`/business/${businessId}/settings/account`}>
+              <span className="ml-2">Account Settings</span>
+            </Link>
+          </Button>
         </nav>
         <Separator className="flex-shrink-0" />
         <div className="p-4 space-y-2 flex-shrink-0">

@@ -16,6 +16,9 @@ export interface Business {
   contact_email: string | null
   contact_phone: string | null
   website: string | null
+  address: string | null
+  instagram: string | null
+  tiktok: string | null
   user_id: string | null // Reference to the business owner's user account
   is_active: boolean
   stripe_account_id: string | null // Stripe Connect account ID
