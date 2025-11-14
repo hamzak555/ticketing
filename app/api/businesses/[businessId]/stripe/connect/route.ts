@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { stripe } from '@/lib/stripe/server'
 import { createClient } from '@/lib/supabase/server'
+import { getPlatformSettings } from '@/lib/db/platform-settings'
 
 export async function POST(
   request: NextRequest,
@@ -104,12 +105,16 @@ export async function GET(
       )
     }
 
+    // Get platform settings
+    const platformSettings = await getPlatformSettings()
+
     if (!business.stripe_account_id) {
       return NextResponse.json({
         connected: false,
         onboarding_complete: false,
         stripe_fee_payer: business.stripe_fee_payer || 'customer',
         platform_fee_payer: business.platform_fee_payer || 'customer',
+        platform_settings: platformSettings,
       })
     }
 
@@ -133,6 +138,7 @@ export async function GET(
       payouts_enabled: account.payouts_enabled,
       stripe_fee_payer: business.stripe_fee_payer || 'customer',
       platform_fee_payer: business.platform_fee_payer || 'customer',
+      platform_settings: platformSettings,
     })
   } catch (error) {
     console.error('Stripe status check error:', error)

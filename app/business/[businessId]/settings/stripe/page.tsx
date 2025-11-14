@@ -7,6 +7,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Label } from '@/components/ui/label'
 import { CheckCircle2, XCircle, Loader2 } from 'lucide-react'
 
+interface PlatformSettings {
+  platform_fee_type: 'flat' | 'percentage' | 'higher_of_both'
+  flat_fee_amount: number
+  percentage_fee: number
+}
+
 interface StripeStatus {
   connected: boolean
   onboarding_complete: boolean
@@ -14,6 +20,7 @@ interface StripeStatus {
   payouts_enabled?: boolean
   stripe_fee_payer?: 'customer' | 'business'
   platform_fee_payer?: 'customer' | 'business'
+  platform_settings?: PlatformSettings
 }
 
 export default function StripeSettingsPage() {
@@ -120,6 +127,23 @@ export default function StripeSettingsPage() {
       setError(err instanceof Error ? err.message : 'An error occurred')
     } finally {
       setIsUpdatingFees(false)
+    }
+  }
+
+  const getPlatformFeeDescription = () => {
+    if (!status?.platform_settings) return 'Set by platform administrator'
+
+    const settings = status.platform_settings
+
+    switch (settings.platform_fee_type) {
+      case 'flat':
+        return `$${settings.flat_fee_amount.toFixed(2)} per order`
+      case 'percentage':
+        return `${settings.percentage_fee}% of ticket price`
+      case 'higher_of_both':
+        return `$${settings.flat_fee_amount.toFixed(2)} or ${settings.percentage_fee}% (whichever is higher)`
+      default:
+        return 'Set by platform administrator'
     }
   }
 
@@ -286,127 +310,128 @@ export default function StripeSettingsPage() {
             </div>
           )}
 
-          {/* Stripe Processing Fees */}
-          <div className="space-y-4">
-            <div>
-              <Label className="text-base font-semibold">Stripe Processing Fees</Label>
-              <p className="text-sm text-muted-foreground mt-1">2.9% + $0.30 per transaction</p>
+          {/* Two-column layout for fee settings */}
+          <div className="grid md:grid-cols-2 gap-6">
+            {/* Stripe Processing Fees */}
+            <div className="space-y-4">
+              <div>
+                <Label className="text-base font-semibold">Stripe Processing Fees</Label>
+                <p className="text-sm text-muted-foreground mt-1">2.9% + $0.30 per transaction</p>
+              </div>
+              <div className="space-y-3">
+                <button
+                  onClick={() => handleUpdateStripeFee('customer')}
+                  disabled={isUpdatingFees}
+                  className={`w-full text-left p-4 rounded-lg border-2 transition-colors ${
+                    status?.stripe_fee_payer === 'customer'
+                      ? 'border-primary bg-primary/5'
+                      : 'border-border hover:border-primary/50'
+                  } ${isUpdatingFees ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={`mt-1 h-5 w-5 rounded-full border-2 flex items-center justify-center ${
+                      status?.stripe_fee_payer === 'customer' ? 'border-primary' : 'border-muted-foreground'
+                    }`}>
+                      {status?.stripe_fee_payer === 'customer' && (
+                        <div className="h-2.5 w-2.5 rounded-full bg-primary" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-medium">Customer Pays</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Added to checkout total
+                      </p>
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => handleUpdateStripeFee('business')}
+                  disabled={isUpdatingFees}
+                  className={`w-full text-left p-4 rounded-lg border-2 transition-colors ${
+                    status?.stripe_fee_payer === 'business'
+                      ? 'border-primary bg-primary/5'
+                      : 'border-border hover:border-primary/50'
+                  } ${isUpdatingFees ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={`mt-1 h-5 w-5 rounded-full border-2 flex items-center justify-center ${
+                      status?.stripe_fee_payer === 'business' ? 'border-primary' : 'border-muted-foreground'
+                    }`}>
+                      {status?.stripe_fee_payer === 'business' && (
+                        <div className="h-2.5 w-2.5 rounded-full bg-primary" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-medium">Business Pays</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Deducted from revenue
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              </div>
             </div>
-            <div className="space-y-3">
-              <button
-                onClick={() => handleUpdateStripeFee('customer')}
-                disabled={isUpdatingFees}
-                className={`w-full text-left p-4 rounded-lg border-2 transition-colors ${
-                  status?.stripe_fee_payer === 'customer'
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border hover:border-primary/50'
-                } ${isUpdatingFees ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-              >
-                <div className="flex items-start gap-3">
-                  <div className={`mt-1 h-5 w-5 rounded-full border-2 flex items-center justify-center ${
-                    status?.stripe_fee_payer === 'customer' ? 'border-primary' : 'border-muted-foreground'
-                  }`}>
-                    {status?.stripe_fee_payer === 'customer' && (
-                      <div className="h-2.5 w-2.5 rounded-full bg-primary" />
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium">Customer Pays Stripe Fees</p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Stripe fees are added to the checkout total
-                    </p>
-                  </div>
-                </div>
-              </button>
 
-              <button
-                onClick={() => handleUpdateStripeFee('business')}
-                disabled={isUpdatingFees}
-                className={`w-full text-left p-4 rounded-lg border-2 transition-colors ${
-                  status?.stripe_fee_payer === 'business'
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border hover:border-primary/50'
-                } ${isUpdatingFees ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-              >
-                <div className="flex items-start gap-3">
-                  <div className={`mt-1 h-5 w-5 rounded-full border-2 flex items-center justify-center ${
-                    status?.stripe_fee_payer === 'business' ? 'border-primary' : 'border-muted-foreground'
-                  }`}>
-                    {status?.stripe_fee_payer === 'business' && (
-                      <div className="h-2.5 w-2.5 rounded-full bg-primary" />
-                    )}
+            {/* Platform Fees */}
+            <div className="space-y-4">
+              <div>
+                <Label className="text-base font-semibold">Platform Fees</Label>
+                <p className="text-sm text-muted-foreground mt-1">{getPlatformFeeDescription()}</p>
+              </div>
+              <div className="space-y-3">
+                <button
+                  onClick={() => handleUpdatePlatformFee('customer')}
+                  disabled={isUpdatingFees}
+                  className={`w-full text-left p-4 rounded-lg border-2 transition-colors ${
+                    status?.platform_fee_payer === 'customer'
+                      ? 'border-primary bg-primary/5'
+                      : 'border-border hover:border-primary/50'
+                  } ${isUpdatingFees ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={`mt-1 h-5 w-5 rounded-full border-2 flex items-center justify-center ${
+                      status?.platform_fee_payer === 'customer' ? 'border-primary' : 'border-muted-foreground'
+                    }`}>
+                      {status?.platform_fee_payer === 'customer' && (
+                        <div className="h-2.5 w-2.5 rounded-full bg-primary" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-medium">Customer Pays</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Added to checkout total
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex-1">
-                    <p className="font-medium">Business Pays Stripe Fees</p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Stripe fees are deducted from your revenue
-                    </p>
-                  </div>
-                </div>
-              </button>
-            </div>
-          </div>
+                </button>
 
-          <div className="border-t pt-6" />
-
-          {/* Platform Fees */}
-          <div className="space-y-4">
-            <div>
-              <Label className="text-base font-semibold">Platform Fees</Label>
-              <p className="text-sm text-muted-foreground mt-1">Set by platform administrator</p>
-            </div>
-            <div className="space-y-3">
-              <button
-                onClick={() => handleUpdatePlatformFee('customer')}
-                disabled={isUpdatingFees}
-                className={`w-full text-left p-4 rounded-lg border-2 transition-colors ${
-                  status?.platform_fee_payer === 'customer'
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border hover:border-primary/50'
-                } ${isUpdatingFees ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-              >
-                <div className="flex items-start gap-3">
-                  <div className={`mt-1 h-5 w-5 rounded-full border-2 flex items-center justify-center ${
-                    status?.platform_fee_payer === 'customer' ? 'border-primary' : 'border-muted-foreground'
-                  }`}>
-                    {status?.platform_fee_payer === 'customer' && (
-                      <div className="h-2.5 w-2.5 rounded-full bg-primary" />
-                    )}
+                <button
+                  onClick={() => handleUpdatePlatformFee('business')}
+                  disabled={isUpdatingFees}
+                  className={`w-full text-left p-4 rounded-lg border-2 transition-colors ${
+                    status?.platform_fee_payer === 'business'
+                      ? 'border-primary bg-primary/5'
+                      : 'border-border hover:border-primary/50'
+                  } ${isUpdatingFees ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                >
+                  <div className="flex items-start gap-3">
+                    <div className={`mt-1 h-5 w-5 rounded-full border-2 flex items-center justify-center ${
+                      status?.platform_fee_payer === 'business' ? 'border-primary' : 'border-muted-foreground'
+                    }`}>
+                      {status?.platform_fee_payer === 'business' && (
+                        <div className="h-2.5 w-2.5 rounded-full bg-primary" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-medium">Business Pays</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Deducted from revenue
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex-1">
-                    <p className="font-medium">Customer Pays Platform Fees</p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Platform fees are added to the checkout total
-                    </p>
-                  </div>
-                </div>
-              </button>
-
-              <button
-                onClick={() => handleUpdatePlatformFee('business')}
-                disabled={isUpdatingFees}
-                className={`w-full text-left p-4 rounded-lg border-2 transition-colors ${
-                  status?.platform_fee_payer === 'business'
-                    ? 'border-primary bg-primary/5'
-                    : 'border-border hover:border-primary/50'
-                } ${isUpdatingFees ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-              >
-                <div className="flex items-start gap-3">
-                  <div className={`mt-1 h-5 w-5 rounded-full border-2 flex items-center justify-center ${
-                    status?.platform_fee_payer === 'business' ? 'border-primary' : 'border-muted-foreground'
-                  }`}>
-                    {status?.platform_fee_payer === 'business' && (
-                      <div className="h-2.5 w-2.5 rounded-full bg-primary" />
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium">Business Pays Platform Fees</p>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Platform fees are deducted from your revenue
-                    </p>
-                  </div>
-                </div>
-              </button>
+                </button>
+              </div>
             </div>
           </div>
 
