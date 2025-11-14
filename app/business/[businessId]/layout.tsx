@@ -44,15 +44,15 @@ export default async function BusinessLayout({ children, params }: BusinessLayou
   return (
     <div className="flex min-h-screen bg-background">
       {/* Sidebar */}
-      <aside className="w-64 border-r bg-card flex flex-col">
-        <div className="p-6">
+      <aside className="w-64 border-r bg-card flex flex-col h-screen sticky top-0">
+        <div className="p-6 flex-shrink-0">
           <Link href={`/business/${businessId}`} className="text-xl font-bold hover:text-primary">
             {business.name}
           </Link>
           <p className="text-xs text-muted-foreground mt-1">Business Dashboard</p>
         </div>
-        <Separator />
-        <nav className="flex-1 p-4 space-y-1">
+        <Separator className="flex-shrink-0" />
+        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           <Button variant="ghost" asChild className="w-full justify-start">
             <Link href={`/business/${businessId}`}>
               <span className="ml-2">Overview</span>
@@ -79,8 +79,8 @@ export default async function BusinessLayout({ children, params }: BusinessLayou
             </Link>
           </Button>
         </nav>
-        <Separator />
-        <div className="p-4 space-y-2">
+        <Separator className="flex-shrink-0" />
+        <div className="p-4 space-y-2 flex-shrink-0">
           <Button variant="outline" size="sm" className="w-full" asChild>
             <Link href={`/${business.slug}`} target="_blank">
               View Public Page
