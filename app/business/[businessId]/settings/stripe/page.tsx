@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
 import { CheckCircle2, XCircle, Loader2 } from 'lucide-react'
 
 interface StripeStatus {
@@ -11,6 +12,7 @@ interface StripeStatus {
   onboarding_complete: boolean
   charges_enabled?: boolean
   payouts_enabled?: boolean
+  fee_payer?: 'customer' | 'business'
 }
 
 export default function StripeSettingsPage() {
@@ -21,7 +23,9 @@ export default function StripeSettingsPage() {
   const [status, setStatus] = useState<StripeStatus | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isConnecting, setIsConnecting] = useState(false)
+  const [isUpdatingFees, setIsUpdatingFees] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [feeUpdateSuccess, setFeeUpdateSuccess] = useState(false)
 
   const success = searchParams.get('success')
   const refresh = searchParams.get('refresh')
@@ -63,6 +67,32 @@ export default function StripeSettingsPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
       setIsConnecting(false)
+    }
+  }
+
+  const handleUpdateFeePayer = async (feePayer: 'customer' | 'business') => {
+    setIsUpdatingFees(true)
+    setError(null)
+    setFeeUpdateSuccess(false)
+
+    try {
+      const response = await fetch(`/api/businesses/${businessId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fee_payer: feePayer }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to update fee settings')
+      }
+
+      setStatus(prev => prev ? { ...prev, fee_payer: feePayer } : null)
+      setFeeUpdateSuccess(true)
+      setTimeout(() => setFeeUpdateSuccess(false), 3000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred')
+    } finally {
+      setIsUpdatingFees(false)
     }
   }
 
@@ -208,6 +238,95 @@ export default function StripeSettingsPage() {
               <li>• Stripe handles all payment processing and security</li>
               <li>• Standard Stripe fees apply (2.9% + $0.30 per transaction)</li>
               <li>• View detailed transaction history in your Stripe dashboard</li>
+            </ul>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Processing Fee Settings</CardTitle>
+          <CardDescription>
+            Choose who pays the Stripe and platform processing fees
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {feeUpdateSuccess && (
+            <div className="p-4 bg-green-500/10 border border-green-500 rounded-md">
+              <p className="text-sm text-green-600 dark:text-green-400">
+                Fee settings updated successfully!
+              </p>
+            </div>
+          )}
+
+          <div className="space-y-4">
+            <Label className="text-base">Who pays the processing fees?</Label>
+            <div className="space-y-3">
+              <button
+                onClick={() => handleUpdateFeePayer('customer')}
+                disabled={isUpdatingFees}
+                className={`w-full text-left p-4 rounded-lg border-2 transition-colors ${
+                  status?.fee_payer === 'customer'
+                    ? 'border-primary bg-primary/5'
+                    : 'border-border hover:border-primary/50'
+                } ${isUpdatingFees ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className={`mt-1 h-5 w-5 rounded-full border-2 flex items-center justify-center ${
+                    status?.fee_payer === 'customer' ? 'border-primary' : 'border-muted-foreground'
+                  }`}>
+                    {status?.fee_payer === 'customer' && (
+                      <div className="h-2.5 w-2.5 rounded-full bg-primary" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium">Customer Pays Fees (Recommended)</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Processing fees are added to the ticket price during checkout. You receive the full ticket amount minus only your net cost.
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Example: $100 ticket → Customer pays $103.20 → You receive ~$100
+                    </p>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => handleUpdateFeePayer('business')}
+                disabled={isUpdatingFees}
+                className={`w-full text-left p-4 rounded-lg border-2 transition-colors ${
+                  status?.fee_payer === 'business'
+                    ? 'border-primary bg-primary/5'
+                    : 'border-border hover:border-primary/50'
+                } ${isUpdatingFees ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+              >
+                <div className="flex items-start gap-3">
+                  <div className={`mt-1 h-5 w-5 rounded-full border-2 flex items-center justify-center ${
+                    status?.fee_payer === 'business' ? 'border-primary' : 'border-muted-foreground'
+                  }`}>
+                    {status?.fee_payer === 'business' && (
+                      <div className="h-2.5 w-2.5 rounded-full bg-primary" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-medium">Business Pays Fees</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Customer pays only the ticket price. Processing fees are deducted from your revenue.
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Example: $100 ticket → Customer pays $100 → You receive ~$96.80
+                    </p>
+                  </div>
+                </div>
+              </button>
+            </div>
+          </div>
+
+          <div className="p-4 bg-muted rounded-lg">
+            <h4 className="font-medium text-sm mb-2">Fee Breakdown</h4>
+            <ul className="text-sm space-y-1">
+              <li className="text-muted-foreground">• Stripe processing: 2.9% + $0.30 per transaction</li>
+              <li className="text-muted-foreground">• Platform fee: Set by platform admin</li>
             </ul>
           </div>
         </CardContent>

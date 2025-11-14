@@ -8,8 +8,9 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Loader2, Minus, Plus } from 'lucide-react'
+import { Loader2, Minus, Plus, Info } from 'lucide-react'
 import Image from 'next/image'
+import { calculateStripeFee, calculateCustomerPaysAmount, calculateBusinessPaysAmount } from '@/lib/utils/stripe-fees'
 
 interface Event {
   id: string
@@ -32,6 +33,7 @@ interface Business {
   slug: string
   stripe_account_id: string | null
   stripe_onboarding_complete: boolean
+  fee_payer: 'customer' | 'business'
 }
 
 interface TicketType {
@@ -381,6 +383,22 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
     }
   }
 
+  const getStripeFee = () => {
+    if (!business) return 0
+
+    const subtotal = calculateTotal()
+    const discount = getDiscountAmount()
+    const platformFee = getPlatformFee()
+
+    if (business.fee_payer === 'customer') {
+      // Calculate Stripe fee on the total amount including platform fee
+      return calculateStripeFee(subtotal - discount + platformFee)
+    } else {
+      // Business pays fees - customer doesn't see Stripe fee added
+      return 0
+    }
+  }
+
   const handleApplyPromoCode = async () => {
     if (!promoCode.trim()) {
       setPromoCodeError('Please enter a promo code')
@@ -523,7 +541,8 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
   const subtotal = calculateTotal()
   const discount = getDiscountAmount()
   const platformFee = getPlatformFee()
-  const total = subtotal - discount + platformFee
+  const stripeFee = getStripeFee()
+  const total = subtotal - discount + platformFee + stripeFee
   const totalTickets = getTotalTicketCount()
 
   const elementsOptions: StripeElementsOptions = {
@@ -849,7 +868,7 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
                     </div>
 
                     <div className="pt-4 border-t">
-                      {(discount > 0 || platformFee > 0) && (
+                      {(discount > 0 || platformFee > 0 || stripeFee > 0) && (
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-sm text-muted-foreground">Subtotal</span>
                           <span className="text-sm text-muted-foreground">${subtotal.toFixed(2)}</span>
@@ -861,10 +880,37 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
                           <span className="text-sm text-green-600">-${discount.toFixed(2)}</span>
                         </div>
                       )}
-                      {platformFee > 0 && (
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm text-muted-foreground">Processing Fee</span>
-                          <span className="text-sm text-muted-foreground">${platformFee.toFixed(2)}</span>
+                      {(platformFee > 0 || stripeFee > 0) && (
+                        <div className="flex items-center justify-between mb-2 group relative">
+                          <div className="flex items-center gap-1">
+                            <span className="text-sm text-muted-foreground">Processing Fees</span>
+                            <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                          </div>
+                          <span className="text-sm text-muted-foreground">${(platformFee + stripeFee).toFixed(2)}</span>
+
+                          {/* Tooltip */}
+                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-50">
+                            <div className="bg-popover border border-border rounded-lg p-3 shadow-lg min-w-[250px]">
+                              <p className="text-xs font-medium mb-2">Fee Breakdown</p>
+                              {platformFee > 0 && (
+                                <div className="flex justify-between text-xs mb-1">
+                                  <span className="text-muted-foreground">Platform Fee:</span>
+                                  <span className="font-medium">${platformFee.toFixed(2)}</span>
+                                </div>
+                              )}
+                              {stripeFee > 0 && (
+                                <div className="flex justify-between text-xs">
+                                  <span className="text-muted-foreground">Stripe Processing:</span>
+                                  <span className="font-medium">${stripeFee.toFixed(2)}</span>
+                                </div>
+                              )}
+                              {stripeFee === 0 && business?.fee_payer === 'business' && (
+                                <p className="text-xs text-muted-foreground mt-2 pt-2 border-t">
+                                  Stripe fees are covered by {business.name}
+                                </p>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       )}
                       <div className="flex items-center justify-between mb-4">

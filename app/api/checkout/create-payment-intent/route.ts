@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getPlatformSettings, calculatePlatformFee } from '@/lib/db/platform-settings'
 import { getTicketType } from '@/lib/db/ticket-types'
 import { getPromoCodeById } from '@/lib/db/promo-codes'
+import { calculateStripeFee } from '@/lib/utils/stripe-fees'
 
 export async function POST(request: NextRequest) {
   try {
@@ -139,16 +140,25 @@ export async function POST(request: NextRequest) {
     // Get platform settings and calculate platform fee
     const platformSettings = await getPlatformSettings()
     const subtotalInDollars = (totalAmount + discountAmount) / 100
-    const platformFeeInCents = Math.round(
-      calculatePlatformFee(subtotalInDollars / totalTickets, totalTickets, platformSettings) * 100
-    )
+    const platformFeeInDollars = calculatePlatformFee(subtotalInDollars / totalTickets, totalTickets, platformSettings)
+    const platformFeeInCents = Math.round(platformFeeInDollars * 100)
 
-    // Add platform fee to the total amount the customer pays
-    const totalWithPlatformFee = totalAmount + platformFeeInCents
+    // Calculate the final charge amount based on who pays fees
+    let finalChargeAmount = totalAmount + platformFeeInCents
+    let stripeFeeForCustomer = 0
+
+    if (event.businesses.fee_payer === 'customer') {
+      // Customer pays Stripe fees - add them to the charge
+      const stripeFeeInDollars = calculateStripeFee((totalAmount + platformFeeInCents) / 100)
+      stripeFeeForCustomer = Math.round(stripeFeeInDollars * 100)
+      finalChargeAmount = totalAmount + platformFeeInCents + stripeFeeForCustomer
+    }
+    // If business pays fees, customer only pays: subtotal - discount + platformFee
+    // Stripe will deduct their fee from this amount automatically
 
     // Create Stripe PaymentIntent
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: totalWithPlatformFee,
+      amount: finalChargeAmount,
       currency: 'usd',
       automatic_payment_methods: {
         enabled: true,
@@ -165,6 +175,10 @@ export async function POST(request: NextRequest) {
         customerName,
         customerEmail,
         customerPhone: customerPhone || '',
+        // Store fee information
+        platformFee: platformFeeInDollars.toFixed(2),
+        stripeFee: (stripeFeeForCustomer / 100).toFixed(2),
+        feePayer: event.businesses.fee_payer,
         // Store promo code information if applied
         ...(promoCode ? {
           promoCodeId: promoCode.id,
