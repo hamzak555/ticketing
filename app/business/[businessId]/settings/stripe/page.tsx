@@ -397,7 +397,6 @@ export default function StripeSettingsPage() {
             <ul className="text-sm text-muted-foreground space-y-1">
               <li>• Receive payments directly to your bank account</li>
               <li>• Stripe handles all payment processing and security</li>
-              <li>• Standard Stripe fees apply (2.9% + $0.30 per transaction)</li>
               <li>• View detailed transaction history in your Stripe dashboard</li>
             </ul>
           </div>
