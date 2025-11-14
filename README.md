@@ -1,36 +1,130 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Event Ticketing Platform
+
+A modern event ticketing platform built with Next.js, Shadcn UI, and Supabase. Businesses can create profiles, manage events, and sell tickets through their custom-branded pages.
+
+## Features
+
+- **Business Profiles**: Create and manage business profiles with custom URLs
+- **Event Management**: Create, edit, and manage events with ticket inventory
+- **Ticket Sales**: Sell tickets and track customer information
+- **Custom URLs**: Each business gets a unique customer-facing URL (e.g., `/your-business-name`)
+- **Responsive Design**: Built with Shadcn UI components and Tailwind CSS
+- **Real-time Updates**: Powered by Supabase for real-time data synchronization
+
+## Tech Stack
+
+- **Framework**: [Next.js 15](https://nextjs.org/) (App Router)
+- **UI Components**: [Shadcn UI](https://ui.shadcn.com/)
+- **Styling**: [Tailwind CSS](https://tailwindcss.com/)
+- **Database**: [Supabase](https://supabase.com/)
+- **Language**: TypeScript
+
+## Project Structure
+
+```
+├── app/
+│   ├── dashboard/          # Business dashboard pages
+│   ├── [businessSlug]/     # Customer-facing business pages
+│   └── page.tsx            # Landing page
+├── components/
+│   ├── ui/                 # Shadcn UI components
+│   ├── dashboard/          # Dashboard-specific components
+│   └── public/             # Public-facing components
+├── lib/
+│   ├── supabase/           # Supabase client configuration
+│   ├── types/              # TypeScript type definitions
+│   ├── db/                 # Database query functions
+│   └── utils.ts            # Utility functions
+└── supabase-schema.sql     # Database schema definition
+```
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+- Node.js 18+ installed
+- A Supabase account and project
+
+### Installation
+
+1. Clone the repository and install dependencies:
+
+```bash
+npm install
+```
+
+2. Set up Supabase:
+
+   - Create a new project at [supabase.com](https://supabase.com)
+   - Copy your project URL and anon key
+   - Run the SQL schema from `supabase-schema.sql` in the Supabase SQL Editor
+
+3. Configure environment variables:
+
+   - Copy `.env.local` and add your Supabase credentials:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=your-project-url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+```
+
+4. Run the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+5. Open [http://localhost:3000](http://localhost:3000) in your browser
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Database Setup
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The database schema includes three main tables:
 
-## Learn More
+- **businesses**: Store business profiles and custom URLs
+- **events**: Manage events with ticket inventory and pricing
+- **tickets**: Track ticket sales and customer information
 
-To learn more about Next.js, take a look at the following resources:
+Run the `supabase-schema.sql` file in your Supabase SQL Editor to create all necessary tables, indexes, and Row Level Security (RLS) policies.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Key Features to Implement
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Dashboard
+- Business profile creation and editing
+- Event CRUD operations
+- Ticket management and tracking
+- Analytics and reporting
 
-## Deploy on Vercel
+### Public Pages
+- Dynamic business pages at `/[businessSlug]`
+- Event listing and details
+- Ticket purchase flow
+- Customer information collection
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Development Roadmap
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- [ ] Implement business profile CRUD
+- [ ] Add event management functionality
+- [ ] Create ticket purchase flow
+- [ ] Add authentication and user management
+- [ ] Implement payment processing
+- [ ] Add email notifications
+- [ ] Create admin analytics dashboard
+- [ ] Add search and filtering
+- [ ] Implement QR code ticket generation
+- [ ] Add ticket validation system
+
+## Scripts
+
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run start` - Start production server
+- `npm run lint` - Run ESLint
+
+## Contributing
+
+This is a new project! Contributions and suggestions are welcome.
+
+## License
+
+MIT
