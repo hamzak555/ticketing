@@ -885,25 +885,25 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
                     </div>
 
                     <div className="pt-4 border-t">
-                      {(discount > 0 || tax > 0 || platformFee > 0 || stripeFee > 0) && (
+                      {totalTickets > 0 && (discount > 0 || tax > 0 || platformFee > 0 || stripeFee > 0) && (
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-sm text-muted-foreground">Subtotal</span>
                           <span className="text-sm text-muted-foreground">${subtotal.toFixed(2)}</span>
                         </div>
                       )}
-                      {discount > 0 && (
+                      {totalTickets > 0 && discount > 0 && (
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-sm text-green-600">Discount</span>
                           <span className="text-sm text-green-600">-${discount.toFixed(2)}</span>
                         </div>
                       )}
-                      {tax > 0 && (
+                      {totalTickets > 0 && tax > 0 && (
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-sm text-muted-foreground">Tax ({business?.tax_percentage || 0}%)</span>
                           <span className="text-sm text-muted-foreground">${tax.toFixed(2)}</span>
                         </div>
                       )}
-                      {(platformFee > 0 || stripeFee > 0) && (
+                      {totalTickets > 0 && (platformFee > 0 || stripeFee > 0) && (
                         <div className="flex items-center justify-between mb-2 group relative">
                           <div className="flex items-center gap-1">
                             <span className="text-sm text-muted-foreground">Processing Fees</span>
