@@ -15,6 +15,7 @@ export async function getCustomersByBusinessId(businessId: string): Promise<Cust
   const supabase = await createClient()
 
   // Get all orders for this business's events
+  // Include fee fields to calculate net revenue (what business actually receives)
   const { data: orders, error } = await supabase
     .from('orders')
     .select(`
@@ -23,6 +24,8 @@ export async function getCustomersByBusinessId(businessId: string): Promise<Cust
       customer_email,
       customer_phone,
       total,
+      platform_fee,
+      stripe_fee,
       created_at,
       event:events!inner (
         business_id
@@ -48,11 +51,17 @@ export async function getCustomersByBusinessId(businessId: string): Promise<Cust
     // Create a unique key based on email or phone (prioritize email)
     const uniqueKey = order.customer_email?.toLowerCase() || order.customer_phone || `unique-${order.id}`
 
+    // Calculate net revenue (what business receives: total - fees)
+    const total = parseFloat(order.total?.toString() || '0')
+    const platformFee = parseFloat(order.platform_fee?.toString() || '0')
+    const stripeFee = parseFloat(order.stripe_fee?.toString() || '0')
+    const netRevenue = total - platformFee - stripeFee
+
     if (customerMap.has(uniqueKey)) {
       // Update existing customer
       const customer = customerMap.get(uniqueKey)!
       customer.total_orders += 1
-      customer.total_spent += parseFloat(order.total?.toString() || '0')
+      customer.total_spent += netRevenue
 
       // Update to most recent name if this order is newer
       if (new Date(order.created_at) > new Date(customer.last_purchase)) {
@@ -80,7 +89,7 @@ export async function getCustomersByBusinessId(businessId: string): Promise<Cust
         email: order.customer_email || null,
         phone: order.customer_phone || null,
         total_orders: 1,
-        total_spent: parseFloat(order.total?.toString() || '0'),
+        total_spent: netRevenue,
         first_purchase: order.created_at,
         last_purchase: order.created_at,
       })

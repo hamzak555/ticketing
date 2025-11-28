@@ -12,6 +12,7 @@ export interface EventAnalytics {
 
 export interface BusinessAnalytics {
   total_revenue: number
+  total_tax_collected: number
   total_tickets_sold: number
   total_orders: number
   events: EventAnalytics[]
@@ -21,6 +22,7 @@ export async function getBusinessAnalytics(businessId: string): Promise<Business
   const supabase = await createClient()
 
   // Get all completed orders for this business's events
+  // Include fee fields to calculate net revenue (what business actually receives)
   const { data: orders, error } = await supabase
     .from('orders')
     .select(`
@@ -28,6 +30,9 @@ export async function getBusinessAnalytics(businessId: string): Promise<Business
       event_id,
       quantity,
       total,
+      tax_amount,
+      platform_fee,
+      stripe_fee,
       status,
       event:events!inner (
         id,
@@ -48,6 +53,7 @@ export async function getBusinessAnalytics(businessId: string): Promise<Business
   if (!orders || orders.length === 0) {
     return {
       total_revenue: 0,
+      total_tax_collected: 0,
       total_tickets_sold: 0,
       total_orders: 0,
       events: []
@@ -56,6 +62,7 @@ export async function getBusinessAnalytics(businessId: string): Promise<Business
 
   // Aggregate by event
   const eventMap = new Map<string, EventAnalytics>()
+  let total_tax_collected = 0
 
   for (const order of orders) {
     const event = Array.isArray(order.event) ? order.event[0] : order.event
@@ -76,10 +83,24 @@ export async function getBusinessAnalytics(businessId: string): Promise<Business
       })
     }
 
+    // Calculate net revenue for the business (what they actually receive)
+    // Business receives: total charged - platform_fee - stripe_fee
+    // This is what gets transferred to the business's Stripe account
+    const total = parseFloat(order.total?.toString() || '0')
+    const taxAmount = parseFloat(order.tax_amount?.toString() || '0')
+    const platformFee = parseFloat(order.platform_fee?.toString() || '0')
+    const stripeFee = parseFloat(order.stripe_fee?.toString() || '0')
+
+    // Net revenue = total charged minus all fees kept by platform/Stripe
+    const netRevenue = total - platformFee - stripeFee
+
+    // Track tax collected
+    total_tax_collected += taxAmount
+
     const analytics = eventMap.get(eventId)!
     analytics.total_orders += 1
     analytics.total_tickets_sold += order.quantity
-    analytics.total_revenue += parseFloat(order.total?.toString() || '0')
+    analytics.total_revenue += netRevenue
   }
 
   // Calculate totals
@@ -90,6 +111,7 @@ export async function getBusinessAnalytics(businessId: string): Promise<Business
 
   return {
     total_revenue,
+    total_tax_collected,
     total_tickets_sold,
     total_orders,
     events: eventAnalytics.sort((a, b) => b.total_revenue - a.total_revenue), // Sort by revenue

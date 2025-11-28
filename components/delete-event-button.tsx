@@ -14,6 +14,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 interface DeleteEventButtonProps {
   eventId: string
@@ -59,18 +65,34 @@ export function DeleteEventButton({
     }
   }
 
+  const button = (
+    <Button
+      variant="destructive"
+      size="sm"
+      onClick={() => setShowDialog(true)}
+      disabled={!canDelete || isDeleting}
+    >
+      <Trash2 className="h-4 w-4 mr-2" />
+      Delete Event
+    </Button>
+  )
+
   return (
     <>
-      <Button
-        variant="destructive"
-        size="sm"
-        onClick={() => setShowDialog(true)}
-        disabled={!canDelete || isDeleting}
-        title={!canDelete ? reasonCannotDelete : 'Delete event'}
-      >
-        <Trash2 className="h-4 w-4 mr-2" />
-        Delete Event
-      </Button>
+      {!canDelete && reasonCannotDelete ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span tabIndex={0} className="inline-block">
+              {button}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            {reasonCannotDelete}
+          </TooltipContent>
+        </Tooltip>
+      ) : (
+        button
+      )}
 
       <AlertDialog open={showDialog} onOpenChange={setShowDialog}>
         <AlertDialogContent>

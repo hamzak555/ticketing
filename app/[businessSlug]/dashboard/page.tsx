@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { getBusinessBySlug } from '@/lib/db/businesses'
-import { getEventsByBusinessId } from '@/lib/db/events'
+import { getEventsByBusinessId, getEventAvailableTickets, getEventTotalTickets } from '@/lib/db/events'
 import { getBusinessAnalytics } from '@/lib/db/analytics'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -131,7 +131,16 @@ export default async function BusinessDashboard({ params }: BusinessDashboardPro
           ) : (
             <div className="space-y-4">
               {events.slice(0, 5).map((event) => (
-                <EventCardHover key={event.id} event={event} businessId={business.id} businessSlug={businessSlug} />
+                <EventCardHover
+                  key={event.id}
+                  event={{
+                    ...event,
+                    available_tickets: getEventAvailableTickets(event),
+                    total_tickets: getEventTotalTickets(event),
+                  }}
+                  businessId={business.id}
+                  businessSlug={businessSlug}
+                />
               ))}
             </div>
           )}

@@ -46,6 +46,9 @@ export interface Event {
   event_date: string
   event_time: string | null
   location: string | null
+  location_latitude: number | null // Latitude for Google Maps
+  location_longitude: number | null // Longitude for Google Maps
+  google_place_id: string | null // Google Places API place ID
   image_url: string | null
   ticket_price: number
   available_tickets: number

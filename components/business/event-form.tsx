@@ -6,14 +6,17 @@ import { format } from 'date-fns'
 import { Calendar as CalendarIcon, Upload, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { createClient } from '@/lib/supabase/client'
+import { GoogleMapsProvider } from '@/components/providers/google-maps-provider'
+import { LocationAutocomplete } from '@/components/business/location-autocomplete'
+import { toast } from 'sonner'
 import Image from 'next/image'
+import { Label } from '@/components/ui/label'
 
 interface EventFormProps {
   businessId: string
@@ -25,6 +28,9 @@ interface EventFormProps {
     event_date: string
     event_time: string | null
     location: string
+    location_latitude?: number | null
+    location_longitude?: number | null
+    google_place_id?: string | null
     image_url: string | null
     status: 'draft' | 'published' | 'cancelled'
   }
@@ -40,13 +46,55 @@ export function EventForm({ businessId, businessSlug, initialData }: EventFormPr
     initialData?.event_date ? new Date(initialData.event_date) : undefined
   )
 
+  // Store saved values for comparison (use state so we can update after save)
+  const [savedFormData, setSavedFormData] = useState({
+    title: initialData?.title || '',
+    description: initialData?.description || '',
+    event_time: initialData?.event_time || '',
+    location: initialData?.location || '',
+    location_latitude: initialData?.location_latitude || null,
+    location_longitude: initialData?.location_longitude || null,
+    google_place_id: initialData?.google_place_id || null,
+    status: initialData?.status || 'draft' as const,
+  })
+
+  const [savedDate, setSavedDate] = useState<Date | undefined>(
+    initialData?.event_date ? new Date(initialData.event_date) : undefined
+  )
+
+  const [savedImageUrl, setSavedImageUrl] = useState<string | null>(initialData?.image_url || null)
+
   const [formData, setFormData] = useState({
     title: initialData?.title || '',
     description: initialData?.description || '',
     event_time: initialData?.event_time || '',
     location: initialData?.location || '',
+    location_latitude: initialData?.location_latitude || null,
+    location_longitude: initialData?.location_longitude || null,
+    google_place_id: initialData?.google_place_id || null,
     status: initialData?.status || 'draft' as const,
   })
+
+  // Check if form has changes (only for edit mode)
+  const hasChanges = (() => {
+    if (!initialData?.id) return true // Always allow submit for new events
+
+    // Check form data changes
+    const formChanged =
+      formData.title !== savedFormData.title ||
+      formData.description !== savedFormData.description ||
+      formData.event_time !== savedFormData.event_time ||
+      formData.location !== savedFormData.location ||
+      formData.status !== savedFormData.status
+
+    // Check date change
+    const dateChanged = date?.toISOString().split('T')[0] !== savedDate?.toISOString().split('T')[0]
+
+    // Check image change
+    const imageChanged = imageFile !== null || imagePreview !== savedImageUrl
+
+    return formChanged || dateChanged || imageChanged
+  })()
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -131,6 +179,9 @@ export function EventForm({ businessId, businessSlug, initialData }: EventFormPr
         event_date: format(date, 'yyyy-MM-dd'),
         event_time: formData.event_time || null,
         location: formData.location || null,
+        location_latitude: formData.location_latitude,
+        location_longitude: formData.location_longitude,
+        google_place_id: formData.google_place_id,
         image_url: imageUrl,
         status: formData.status,
       }
@@ -146,8 +197,20 @@ export function EventForm({ businessId, businessSlug, initialData }: EventFormPr
         throw new Error(data.error || 'Failed to save event')
       }
 
-      router.push(`/${businessSlug}/dashboard/events`)
-      router.refresh()
+      if (initialData?.id) {
+        // For updates, stay on the page and show success toast
+        // Update saved values to match current values so hasChanges becomes false
+        setSavedFormData({ ...formData })
+        setSavedDate(date)
+        setSavedImageUrl(imageUrl)
+        setImageFile(null) // Clear the file since it's been uploaded
+        toast.success('Event updated successfully!')
+        router.refresh()
+      } else {
+        // For new events, redirect to events list
+        router.push(`/${businessSlug}/dashboard/events`)
+        router.refresh()
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
     } finally {
@@ -192,6 +255,7 @@ export function EventForm({ businessId, businessSlug, initialData }: EventFormPr
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               placeholder="Describe your event..."
               rows={4}
+              className="resize-none max-h-32 overflow-y-auto"
             />
           </div>
 
@@ -292,15 +356,23 @@ export function EventForm({ businessId, businessSlug, initialData }: EventFormPr
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="location">Location</Label>
-            <Input
-              id="location"
+          <GoogleMapsProvider>
+            <LocationAutocomplete
               value={formData.location}
-              onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-              placeholder="e.g., Central Park, New York"
+              onChange={(location, placeId, lat, lng) =>
+                setFormData({
+                  ...formData,
+                  location,
+                  google_place_id: placeId,
+                  location_latitude: lat,
+                  location_longitude: lng,
+                })
+              }
+              disabled={isLoading}
+              label="Location"
+              placeholder="Search for a venue or address..."
             />
-          </div>
+          </GoogleMapsProvider>
 
           <div className="space-y-2">
             <Label htmlFor="status">Status</Label>
@@ -325,7 +397,7 @@ export function EventForm({ businessId, businessSlug, initialData }: EventFormPr
           </div>
 
           <div className="flex gap-4 pt-4">
-            <Button type="submit" disabled={isLoading}>
+            <Button type="submit" disabled={isLoading || !hasChanges}>
               {isLoading ? 'Saving...' : initialData?.id ? 'Update Event' : 'Create Event'}
             </Button>
             <Button
@@ -334,7 +406,7 @@ export function EventForm({ businessId, businessSlug, initialData }: EventFormPr
               onClick={() => router.push(`/${businessSlug}/dashboard/events`)}
               disabled={isLoading}
             >
-              Cancel
+              {initialData?.id ? 'Back to Events' : 'Cancel'}
             </Button>
           </div>
         </CardContent>

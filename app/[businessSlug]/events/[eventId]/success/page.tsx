@@ -13,6 +13,7 @@ export default function SuccessPage({ params }: { params: Promise<{ businessSlug
   const searchParams = useSearchParams()
   const paymentIntent = searchParams.get('payment_intent')
   const paymentIntentClientSecret = searchParams.get('payment_intent_client_secret')
+  const orderId = searchParams.get('orderId')
 
   const [isVerifying, setIsVerifying] = useState(true)
   const [orderDetails, setOrderDetails] = useState<any>(null)
@@ -27,11 +28,13 @@ export default function SuccessPage({ params }: { params: Promise<{ businessSlug
   useEffect(() => {
     if (paymentIntent) {
       verifyPayment()
+    } else if (orderId) {
+      fetchOrderDetails()
     } else {
       setError('No payment information provided')
       setIsVerifying(false)
     }
-  }, [paymentIntent])
+  }, [paymentIntent, orderId])
 
   // Extract multiple dominant colors from image for multi-color glow effect
   useEffect(() => {
@@ -99,6 +102,22 @@ export default function SuccessPage({ params }: { params: Promise<{ businessSlug
       if (!response.ok) {
         const data = await response.json()
         throw new Error(data.error || 'Failed to verify payment')
+      }
+      const data = await response.json()
+      setOrderDetails(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred')
+    } finally {
+      setIsVerifying(false)
+    }
+  }
+
+  const fetchOrderDetails = async () => {
+    try {
+      const response = await fetch(`/api/orders/${orderId}`)
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Failed to fetch order details')
       }
       const data = await response.json()
       setOrderDetails(data)
@@ -288,10 +307,15 @@ export default function SuccessPage({ params }: { params: Promise<{ businessSlug
                 <div className="rounded-full bg-green-100 dark:bg-green-900/20 p-2">
                   <Ticket className="h-6 w-6 text-green-600 dark:text-green-400" />
                 </div>
-                <CardTitle className="text-2xl">Payment Successful!</CardTitle>
+                <CardTitle className="text-2xl">
+                  {orderDetails.amount > 0 ? 'Payment Successful!' : 'Order Confirmed!'}
+                </CardTitle>
               </div>
               <CardDescription>
-                Your tickets have been purchased successfully
+                {orderDetails.amount > 0
+                  ? 'Your tickets have been purchased successfully'
+                  : 'Your free tickets have been reserved successfully'
+                }
               </CardDescription>
             </div>
           </div>
@@ -307,8 +331,10 @@ export default function SuccessPage({ params }: { params: Promise<{ businessSlug
               <span className="font-medium">{orderDetails.quantity} {orderDetails.quantity === 1 ? 'ticket' : 'tickets'}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Total Paid</span>
-              <span className="font-medium">${orderDetails.amount.toFixed(2)}</span>
+              <span className="text-muted-foreground">Total</span>
+              <span className="font-medium">
+                {orderDetails.amount > 0 ? `$${orderDetails.amount.toFixed(2)}` : 'Free'}
+              </span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Customer</span>

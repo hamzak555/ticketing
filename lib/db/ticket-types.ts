@@ -8,6 +8,8 @@ export interface TicketType {
   price: number
   total_quantity: number
   available_quantity: number
+  max_per_customer: number | null
+  display_order: number
   is_active: boolean
   sale_start_date: string | null
   sale_end_date: string | null
@@ -21,6 +23,7 @@ export interface TicketTypeCreate {
   description?: string
   price: number
   total_quantity: number
+  max_per_customer?: number | null
   is_active?: boolean
   sale_start_date?: string
   sale_end_date?: string
@@ -31,6 +34,8 @@ export interface TicketTypeUpdate {
   description?: string
   price?: number
   total_quantity?: number
+  max_per_customer?: number | null
+  display_order?: number
   is_active?: boolean
   sale_start_date?: string
   sale_end_date?: string
@@ -43,7 +48,7 @@ export async function getTicketTypes(eventId: string): Promise<TicketType[]> {
     .from('ticket_types')
     .select('*')
     .eq('event_id', eventId)
-    .order('created_at', { ascending: true })
+    .order('display_order', { ascending: true })
 
   if (error) {
     console.error('Error fetching ticket types:', error)
@@ -73,11 +78,24 @@ export async function getTicketType(id: string): Promise<TicketType | null> {
 export async function createTicketType(ticketTypeData: TicketTypeCreate): Promise<TicketType> {
   const supabase = await createClient()
 
+  // Get the max display_order for this event to set the new ticket at the end
+  const { data: existingTickets } = await supabase
+    .from('ticket_types')
+    .select('display_order')
+    .eq('event_id', ticketTypeData.event_id)
+    .order('display_order', { ascending: false })
+    .limit(1)
+
+  const nextDisplayOrder = existingTickets && existingTickets.length > 0
+    ? existingTickets[0].display_order + 1
+    : 0
+
   const { data, error } = await supabase
     .from('ticket_types')
     .insert({
       ...ticketTypeData,
       available_quantity: ticketTypeData.total_quantity,
+      display_order: nextDisplayOrder,
     })
     .select()
     .single()

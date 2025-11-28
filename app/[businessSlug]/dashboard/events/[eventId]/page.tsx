@@ -10,7 +10,9 @@ import { Badge } from '@/components/ui/badge'
 import { EventForm } from '@/components/business/event-form'
 import TicketTypesTab from '@/components/business/ticket-types-tab'
 import PromoCodesTab from '@/components/business/promo-codes-tab'
+import ArtistLineupTab from '@/components/business/artist-lineup-tab'
 import { DeleteEventButton } from '@/components/delete-event-button'
+import { CopyEventLink } from '@/components/business/copy-event-link'
 import { formatCurrency } from '@/lib/utils/currency'
 
 // Force dynamic rendering to always fetch fresh data
@@ -90,6 +92,7 @@ export default async function EventManagePage({ params }: EventManagePageProps) 
           } className="capitalize">
             {event.status}
           </Badge>
+          <CopyEventLink businessSlug={businessSlug} eventId={eventId} />
           <DeleteEventButton
             eventId={eventId}
             eventTitle={event.title}
@@ -148,6 +151,7 @@ export default async function EventManagePage({ params }: EventManagePageProps) 
         <TabsList>
           <TabsTrigger value="details">Event Details</TabsTrigger>
           <TabsTrigger value="tickets">Tickets</TabsTrigger>
+          <TabsTrigger value="artists">Artist Lineup</TabsTrigger>
           <TabsTrigger value="promo">Promo Codes</TabsTrigger>
         </TabsList>
 
@@ -162,6 +166,9 @@ export default async function EventManagePage({ params }: EventManagePageProps) 
               event_date: event.event_date,
               event_time: event.event_time,
               location: event.location || '',
+              location_latitude: event.location_latitude,
+              location_longitude: event.location_longitude,
+              google_place_id: event.google_place_id,
               image_url: event.image_url,
               status: event.status,
             }}
@@ -170,6 +177,10 @@ export default async function EventManagePage({ params }: EventManagePageProps) 
 
         <TabsContent value="tickets" className="space-y-4">
           <TicketTypesTab eventId={eventId} />
+        </TabsContent>
+
+        <TabsContent value="artists" className="space-y-4">
+          <ArtistLineupTab eventId={eventId} />
         </TabsContent>
 
         <TabsContent value="promo" className="space-y-4">

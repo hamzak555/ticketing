@@ -46,11 +46,19 @@ export async function GET(
     // Get business-specific fee settings (custom or global)
     const feeSettings = await getBusinessFeeSettings(business)
 
+    // Get artists for this event
+    const { data: artists } = await supabase
+      .from('event_artists')
+      .select('*')
+      .eq('event_id', eventId)
+      .order('display_order', { ascending: true })
+
     return NextResponse.json({
       event,
       business,
       ticketTypes: ticketTypes.filter(tt => tt.is_active),
       platformSettings: feeSettings,
+      artists: artists || [],
     })
   } catch (error) {
     console.error('Error fetching event:', error)

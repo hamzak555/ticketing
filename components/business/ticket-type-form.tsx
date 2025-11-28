@@ -19,6 +19,7 @@ interface TicketTypeFormProps {
     description: string | null
     price: number
     total_quantity: number
+    max_per_customer: number | null
     is_active: boolean
     sale_start_date: string | null
     sale_end_date: string | null
@@ -36,6 +37,7 @@ export default function TicketTypeForm({ eventId, ticketType, onSuccess, onCance
     description: ticketType?.description || '',
     price: ticketType?.price.toString() || '',
     total_quantity: ticketType?.total_quantity.toString() || '',
+    max_per_customer: ticketType?.max_per_customer?.toString() || '',
     is_active: ticketType?.is_active ?? true,
     sale_start_date: ticketType?.sale_start_date ? new Date(ticketType.sale_start_date) : undefined,
     sale_end_date: ticketType?.sale_end_date ? new Date(ticketType.sale_end_date) : undefined,
@@ -62,6 +64,7 @@ export default function TicketTypeForm({ eventId, ticketType, onSuccess, onCance
           description: formData.description || null,
           price: parseFloat(formData.price),
           total_quantity: parseInt(formData.total_quantity),
+          max_per_customer: formData.max_per_customer ? parseInt(formData.max_per_customer) : null,
           is_active: formData.is_active,
           sale_start_date: formData.sale_start_date?.toISOString() || null,
           sale_end_date: formData.sale_end_date?.toISOString() || null,
@@ -113,7 +116,7 @@ export default function TicketTypeForm({ eventId, ticketType, onSuccess, onCance
             />
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-3">
             <div className="space-y-2">
               <Label htmlFor="price">Price ($) *</Label>
               <Input
@@ -141,9 +144,21 @@ export default function TicketTypeForm({ eventId, ticketType, onSuccess, onCance
               />
               {ticketType && (
                 <p className="text-xs text-muted-foreground">
-                  Note: Changing quantity will adjust availability proportionally
+                  Changing quantity adjusts availability
                 </p>
               )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="max_per_customer">Limit Per Customer</Label>
+              <Input
+                id="max_per_customer"
+                type="number"
+                min="1"
+                value={formData.max_per_customer}
+                onChange={(e) => setFormData({ ...formData, max_per_customer: e.target.value })}
+                placeholder="No limit"
+              />
             </div>
           </div>
 

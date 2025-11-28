@@ -12,7 +12,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Loader2, Plus, Pencil, Trash2 } from 'lucide-react'
+import { Loader2, Plus, Pencil, Trash2, ChevronUp, ChevronDown } from 'lucide-react'
 import TicketTypeForm from './ticket-type-form'
 import {
   Dialog,
@@ -29,6 +29,8 @@ interface TicketType {
   price: number
   total_quantity: number
   available_quantity: number
+  max_per_customer: number | null
+  display_order: number
   is_active: boolean
   sale_start_date: string | null
   sale_end_date: string | null
@@ -113,6 +115,64 @@ export default function TicketTypesTab({ eventId }: TicketTypesTabProps) {
     return ticketType.total_quantity - ticketType.available_quantity
   }
 
+  const moveTicketType = async (ticketTypeId: string, direction: 'up' | 'down') => {
+    const currentIndex = ticketTypes.findIndex(t => t.id === ticketTypeId)
+    if (currentIndex === -1) return
+
+    const newIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
+    if (newIndex < 0 || newIndex >= ticketTypes.length) return
+
+    const otherTicketType = ticketTypes[newIndex]
+    const currentTicketType = ticketTypes[currentIndex]
+
+    try {
+      // If display_order values are the same (legacy data), normalize all orders first
+      if (currentTicketType.display_order === otherTicketType.display_order) {
+        // Normalize: assign sequential display_order based on current positions
+        await Promise.all(
+          ticketTypes.map((tt, idx) =>
+            fetch(`/api/ticket-types/${tt.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ display_order: idx }),
+            })
+          )
+        )
+        // Now swap with the normalized values
+        await Promise.all([
+          fetch(`/api/ticket-types/${currentTicketType.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ display_order: newIndex }),
+          }),
+          fetch(`/api/ticket-types/${otherTicketType.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ display_order: currentIndex }),
+          }),
+        ])
+      } else {
+        // Swap display_order values
+        await Promise.all([
+          fetch(`/api/ticket-types/${currentTicketType.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ display_order: otherTicketType.display_order }),
+          }),
+          fetch(`/api/ticket-types/${otherTicketType.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ display_order: currentTicketType.display_order }),
+          }),
+        ])
+      }
+
+      await fetchTicketTypes()
+    } catch (error) {
+      console.error('Error reordering ticket types:', error)
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -153,6 +213,7 @@ export default function TicketTypesTab({ eventId }: TicketTypesTabProps) {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-[80px]">Order</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead className="text-right">Price</TableHead>
                   <TableHead className="text-right">Sold</TableHead>
@@ -163,8 +224,30 @@ export default function TicketTypesTab({ eventId }: TicketTypesTabProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {ticketTypes.map((ticketType) => (
+                {ticketTypes.map((ticketType, index) => (
                   <TableRow key={ticketType.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => moveTicketType(ticketType.id, 'up')}
+                          disabled={index === 0}
+                        >
+                          <ChevronUp className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8"
+                          onClick={() => moveTicketType(ticketType.id, 'down')}
+                          disabled={index === ticketTypes.length - 1}
+                        >
+                          <ChevronDown className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
                     <TableCell className="font-medium">
                       {ticketType.name}
                       {ticketType.description && (
@@ -186,7 +269,7 @@ export default function TicketTypesTab({ eventId }: TicketTypesTabProps) {
                       {ticketType.total_quantity}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={ticketType.is_active ? 'default' : 'secondary'}>
+                      <Badge variant={ticketType.is_active ? 'success' : 'secondary'}>
                         {ticketType.is_active ? 'Active' : 'Inactive'}
                       </Badge>
                     </TableCell>

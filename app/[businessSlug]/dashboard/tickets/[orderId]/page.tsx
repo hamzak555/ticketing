@@ -73,7 +73,8 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
   // Calculate refund amounts
   const totalRefunded = refunds?.filter(r => r.status === 'succeeded')
     .reduce((sum, r) => sum + parseFloat(r.amount.toString()), 0) || 0
-  const businessTransferAmount = order.subtotal - order.discount_amount + (order.tax_amount || 0)
+  // Business receives: total charged minus all fees (platform + stripe)
+  const businessTransferAmount = order.total - (order.platform_fee || 0) - (order.stripe_fee || 0)
   const remainingRefundable = businessTransferAmount - totalRefunded
 
   const getStatusColor = (status: string) => {
@@ -200,7 +201,7 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
                 <div className="flex justify-between items-center">
                   <p className="text-sm font-semibold text-green-900 dark:text-green-100">Transferred to Business</p>
                   <p className="text-xl font-bold text-green-700 dark:text-green-400">
-                    {formatCurrency(order.subtotal - order.discount_amount + (order.tax_amount || 0))}
+                    {formatCurrency(businessTransferAmount)}
                   </p>
                 </div>
               </div>

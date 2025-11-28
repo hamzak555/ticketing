@@ -59,12 +59,10 @@ export default async function ReportsPage({ params }: ReportsPageProps) {
       </div>
 
       {/* Overview Stats */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-          </CardHeader>
-          <CardContent>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <Card className="py-4">
+          <CardContent className="pb-0">
+            <p className="text-sm font-medium text-muted-foreground">Total Revenue</p>
             <div className="text-2xl font-bold">{formatCurrency(analytics.total_revenue)}</div>
             <p className="text-xs text-muted-foreground">
               From {analytics.total_orders} orders
@@ -72,11 +70,32 @@ export default async function ReportsPage({ params }: ReportsPageProps) {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Tickets Sold</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <Card className="py-4">
+          <CardContent className="pb-0">
+            <p className="text-sm font-medium text-muted-foreground">Tax Collected</p>
+            <div className="text-2xl font-bold">{formatCurrency(analytics.total_tax_collected)}</div>
+            <p className="text-xs text-muted-foreground">
+              Included in total revenue
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="py-4">
+          <CardContent className="pb-0">
+            <p className="text-sm font-medium text-muted-foreground">Post-Tax Revenue</p>
+            <div className="text-2xl font-bold">{formatCurrency(analytics.total_revenue - analytics.total_tax_collected)}</div>
+            <p className="text-xs text-muted-foreground">
+              Revenue minus tax
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Secondary Stats */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <Card className="py-4">
+          <CardContent className="pb-0">
+            <p className="text-sm font-medium text-muted-foreground">Tickets Sold</p>
             <div className="text-2xl font-bold">{analytics.total_tickets_sold}</div>
             <p className="text-xs text-muted-foreground">
               {totalTicketsAvailable} still available
@@ -84,11 +103,9 @@ export default async function ReportsPage({ params }: ReportsPageProps) {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Published Events</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <Card className="py-4">
+          <CardContent className="pb-0">
+            <p className="text-sm font-medium text-muted-foreground">Published Events</p>
             <div className="text-2xl font-bold">{publishedEvents.length}</div>
             <p className="text-xs text-muted-foreground">
               of {events.length} total events
@@ -96,11 +113,9 @@ export default async function ReportsPage({ params }: ReportsPageProps) {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Upcoming Events</CardTitle>
-          </CardHeader>
-          <CardContent>
+        <Card className="py-4">
+          <CardContent className="pb-0">
+            <p className="text-sm font-medium text-muted-foreground">Upcoming Events</p>
             <div className="text-2xl font-bold">{upcomingEvents.length}</div>
             <p className="text-xs text-muted-foreground">
               Future events

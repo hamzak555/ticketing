@@ -145,12 +145,16 @@ export async function POST(request: NextRequest) {
     const taxPercentage = event.businesses.tax_percentage || 0
     const taxInCents = Math.round((taxableAmountInDollars * taxPercentage))
 
+    // Check if this is a free ticket (no charge after discount)
+    const isFreeTicket = totalAmount <= 0
+
     // Get business-specific fee settings (custom or global) and calculate platform fee
     // Platform fee should be calculated on the amount INCLUDING tax
+    // No fees for free tickets
     const feeSettings = await getBusinessFeeSettings(event.businesses)
     const subtotalInDollars = (totalAmount + discountAmount) / 100
     const taxableAmountWithTaxInCents = totalAmount + taxInCents
-    const platformFeeInCents = calculatePlatformFee(
+    const platformFeeInCents = isFreeTicket ? 0 : calculatePlatformFee(
       subtotalInDollars / totalTickets,
       totalTickets,
       feeSettings,
@@ -163,14 +167,14 @@ export async function POST(request: NextRequest) {
     let platformFeeForCustomer = 0
     let stripeFeeForCustomer = 0
 
-    // Add platform fee if customer pays it
-    if (event.businesses.platform_fee_payer === 'customer') {
+    // Add platform fee if customer pays it (skip for free tickets)
+    if (!isFreeTicket && event.businesses.platform_fee_payer === 'customer') {
       platformFeeForCustomer = platformFeeInCents
       finalChargeAmount += platformFeeInCents
     }
 
-    // Add Stripe fee if customer pays it
-    if (event.businesses.stripe_fee_payer === 'customer') {
+    // Add Stripe fee if customer pays it (skip for free tickets)
+    if (!isFreeTicket && event.businesses.stripe_fee_payer === 'customer') {
       // Use "gross up" formula to calculate the Stripe fee
       // Since Stripe calculates their fee on the final amount (including their fee),
       // we need to solve: final = base + (final * 0.029 + 0.30)
@@ -186,7 +190,11 @@ export async function POST(request: NextRequest) {
     let transferAmount: number
     let actualStripeFeeInCents: number
 
-    if (event.businesses.stripe_fee_payer === 'customer') {
+    if (isFreeTicket) {
+      // No fees for free tickets
+      actualStripeFeeInCents = 0
+      transferAmount = 0
+    } else if (event.businesses.stripe_fee_payer === 'customer') {
       // Customer is paying the Stripe fee (it's already included in finalChargeAmount)
       // Platform gets: platform fee + stripe fee (customer paid)
       // Business gets: finalChargeAmount - platform fee - stripe fee

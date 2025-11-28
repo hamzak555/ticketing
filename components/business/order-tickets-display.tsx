@@ -189,17 +189,20 @@ export function OrderTicketsDisplay({ tickets }: OrderTicketsDisplayProps) {
                       <span className="text-muted-foreground">Price</span>
                       <span className="font-medium">${ticket.price.toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between text-sm">
+                    <div className="flex justify-between items-center text-sm">
                       <span className="text-muted-foreground">Status</span>
-                      <span className={`font-medium ${
-                        ticket.status === 'valid'
-                          ? 'text-green-600'
-                          : ticket.status === 'invalid'
-                          ? 'text-red-600'
-                          : 'text-yellow-600'
-                      }`}>
-                        {ticket.status.charAt(0).toUpperCase() + ticket.status.slice(1)}
-                      </span>
+                      <Badge
+                        variant={
+                          ticket.status === 'valid'
+                            ? 'success'
+                            : ticket.status === 'invalid'
+                            ? 'destructive'
+                            : 'warning'
+                        }
+                        className="capitalize"
+                      >
+                        {ticket.status}
+                      </Badge>
                     </div>
                     {isScanned && ticket.checked_in_at && (
                       <div className="flex justify-between text-sm">

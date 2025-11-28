@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { toast } from 'sonner'
 import { AddressAutocomplete } from '@/components/business/address-autocomplete'
 import { GoogleMapsProvider } from '@/components/providers/google-maps-provider'
@@ -27,12 +28,32 @@ interface AccountSettingsFormProps {
     website: string | null
     instagram: string | null
     tiktok: string | null
+    facebook: string | null
+    terms_and_conditions: string | null
   }
 }
 
 export function AccountSettingsForm({ businessId, businessSlug, business }: AccountSettingsFormProps) {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
+
+  // Store initial values for comparison
+  const initialFormData = useMemo(() => ({
+    name: business.name || '',
+    logo_url: business.logo_url,
+    theme_color: business.theme_color || '#3b82f6',
+    contact_email: business.contact_email || '',
+    contact_phone: business.contact_phone || '',
+    address: business.address || '',
+    address_latitude: business.address_latitude,
+    address_longitude: business.address_longitude,
+    google_place_id: business.google_place_id,
+    website: business.website || '',
+    instagram: business.instagram || '',
+    tiktok: business.tiktok || '',
+    facebook: business.facebook || '',
+    terms_and_conditions: business.terms_and_conditions || '',
+  }), [business])
 
   const [formData, setFormData] = useState({
     name: business.name || '',
@@ -47,7 +68,26 @@ export function AccountSettingsForm({ businessId, businessSlug, business }: Acco
     website: business.website || '',
     instagram: business.instagram || '',
     tiktok: business.tiktok || '',
+    facebook: business.facebook || '',
+    terms_and_conditions: business.terms_and_conditions || '',
   })
+
+  // Check if form has changes
+  const hasChanges = useMemo(() => {
+    return (
+      formData.name !== initialFormData.name ||
+      formData.logo_url !== initialFormData.logo_url ||
+      formData.theme_color !== initialFormData.theme_color ||
+      formData.contact_email !== initialFormData.contact_email ||
+      formData.contact_phone !== initialFormData.contact_phone ||
+      formData.address !== initialFormData.address ||
+      formData.website !== initialFormData.website ||
+      formData.instagram !== initialFormData.instagram ||
+      formData.tiktok !== initialFormData.tiktok ||
+      formData.facebook !== initialFormData.facebook ||
+      formData.terms_and_conditions !== initialFormData.terms_and_conditions
+    )
+  }, [formData, initialFormData])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -161,7 +201,7 @@ export function AccountSettingsForm({ businessId, businessSlug, business }: Acco
       </div>
 
       {/* Social Media */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="space-y-2">
           <Label htmlFor="instagram">Instagram</Label>
           <Input
@@ -181,11 +221,37 @@ export function AccountSettingsForm({ businessId, businessSlug, business }: Acco
             placeholder="@yourbusiness or URL"
           />
         </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="facebook">Facebook</Label>
+          <Input
+            id="facebook"
+            value={formData.facebook}
+            onChange={(e) => setFormData({ ...formData, facebook: e.target.value })}
+            placeholder="Page name or URL"
+          />
+        </div>
+      </div>
+
+      {/* Terms and Conditions */}
+      <div className="space-y-2">
+        <Label htmlFor="terms_and_conditions">Terms and Conditions</Label>
+        <Textarea
+          id="terms_and_conditions"
+          value={formData.terms_and_conditions}
+          onChange={(e) => setFormData({ ...formData, terms_and_conditions: e.target.value })}
+          placeholder="Enter your terms and conditions for ticket purchases..."
+          rows={4}
+          className="resize-none max-h-32 overflow-y-auto"
+        />
+        <p className="text-xs text-muted-foreground">
+          These terms will be shown to customers during checkout. Leave empty to hide the terms checkbox.
+        </p>
       </div>
 
       {/* Submit Button */}
       <div className="flex justify-end pt-4">
-        <Button type="submit" disabled={isLoading}>
+        <Button type="submit" disabled={isLoading || !hasChanges}>
           {isLoading ? 'Saving...' : 'Save Changes'}
         </Button>
       </div>

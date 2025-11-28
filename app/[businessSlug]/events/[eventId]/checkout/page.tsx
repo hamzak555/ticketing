@@ -10,7 +10,19 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Loader2, Minus, Plus, Info } from 'lucide-react'
 import Image from 'next/image'
+import { AnimatedImageGlow } from '@/components/business/animated-image-glow'
+import { EventMap } from '@/components/business/event-map'
+import { TermsModal } from '@/components/business/terms-modal'
+import { Checkbox } from '@/components/ui/checkbox'
 import { calculateStripeFee, calculateCustomerPaysAmount, calculateBusinessPaysAmount } from '@/lib/utils/stripe-fees'
+
+// Helper function to format time to 12-hour format
+function formatTimeTo12Hour(time: string): string {
+  const [hours, minutes] = time.split(':').map(Number)
+  const period = hours >= 12 ? 'PM' : 'AM'
+  const displayHours = hours % 12 || 12
+  return `${displayHours}${minutes > 0 ? `:${minutes.toString().padStart(2, '0')}` : ''}${period}`
+}
 
 interface Event {
   id: string
@@ -20,6 +32,8 @@ interface Event {
   event_date: string
   event_time: string | null
   location: string | null
+  location_latitude: number | null
+  location_longitude: number | null
   image_url: string | null
   ticket_price: number
   available_tickets: number
@@ -36,6 +50,7 @@ interface Business {
   stripe_fee_payer: 'customer' | 'business'
   platform_fee_payer: 'customer' | 'business'
   tax_percentage: number
+  terms_and_conditions: string | null
 }
 
 interface TicketType {
@@ -44,12 +59,19 @@ interface TicketType {
   description: string | null
   price: number
   available_quantity: number
+  max_per_customer: number | null
   is_active: boolean
 }
 
 interface TicketSelection {
   ticketTypeId: string
   quantity: number
+}
+
+interface Artist {
+  id: string
+  name: string
+  photo_url: string | null
 }
 
 function PaymentForm({
@@ -157,6 +179,7 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
   const [event, setEvent] = useState<Event | null>(null)
   const [business, setBusiness] = useState<Business | null>(null)
   const [ticketTypes, setTicketTypes] = useState<TicketType[]>([])
+  const [artists, setArtists] = useState<Artist[]>([])
   const [platformSettings, setPlatformSettings] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -187,77 +210,17 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
   const [clientSecret, setClientSecret] = useState<string | null>(null)
   const [stripePromise, setStripePromise] = useState<any>(null)
   const [isInitializingPayment, setIsInitializingPayment] = useState(false)
-  const [imageGlowColors, setImageGlowColors] = useState<string[]>([
-    'rgba(255, 255, 255, 0.1)',
-    'rgba(200, 200, 200, 0.1)',
-    'rgba(150, 150, 150, 0.1)'
-  ])
+  const [isCompletingFreeOrder, setIsCompletingFreeOrder] = useState(false)
+
+  // Terms and conditions state
+  const [termsAccepted, setTermsAccepted] = useState(false)
+  const [termsModalOpen, setTermsModalOpen] = useState(false)
 
   const hasTicketTypes = ticketTypes.length > 0
 
   useEffect(() => {
     fetchEventDetails()
   }, [])
-
-  // Extract multiple dominant colors from image for multi-color glow effect
-  useEffect(() => {
-    if (!event?.image_url) return
-
-    const img = document.createElement('img')
-    img.crossOrigin = 'Anonymous'
-    img.src = event.image_url
-
-    img.onload = () => {
-      try {
-        const canvas = document.createElement('canvas')
-        const ctx = canvas.getContext('2d')
-        if (!ctx) return
-
-        canvas.width = img.width
-        canvas.height = img.height
-        ctx.drawImage(img, 0, 0)
-
-        const sampleSize = 60
-        const colors: string[] = []
-
-        // Sample from 4 different areas: center, top-left, top-right, bottom
-        const samplePoints = [
-          { x: img.width / 2, y: img.height / 2 },      // center
-          { x: img.width / 4, y: img.height / 4 },      // top-left
-          { x: (3 * img.width) / 4, y: img.height / 4 }, // top-right
-          { x: img.width / 2, y: (3 * img.height) / 4 }  // bottom
-        ]
-
-        for (const point of samplePoints) {
-          const imageData = ctx.getImageData(
-            Math.max(0, point.x - sampleSize / 2),
-            Math.max(0, point.y - sampleSize / 2),
-            sampleSize,
-            sampleSize
-          )
-
-          let r = 0, g = 0, b = 0
-          const pixels = imageData.data.length / 4
-
-          for (let i = 0; i < imageData.data.length; i += 4) {
-            r += imageData.data[i]
-            g += imageData.data[i + 1]
-            b += imageData.data[i + 2]
-          }
-
-          r = Math.floor(r / pixels)
-          g = Math.floor(g / pixels)
-          b = Math.floor(b / pixels)
-
-          colors.push(`rgba(${r}, ${g}, ${b}, 0.6)`)
-        }
-
-        setImageGlowColors(colors)
-      } catch (error) {
-        console.error('Error extracting image colors:', error)
-      }
-    }
-  }, [event?.image_url])
 
   const fetchEventDetails = async () => {
     try {
@@ -269,6 +232,7 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
       setEvent(data.event)
       setBusiness(data.business)
       setTicketTypes(data.ticketTypes || [])
+      setArtists(data.artists || [])
       setPlatformSettings(data.platformSettings || null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load event')
@@ -281,7 +245,11 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
     setTicketSelections(prev => {
       const current = prev[ticketTypeId] || 0
       const ticketType = ticketTypes.find(tt => tt.id === ticketTypeId)
-      const maxQty = ticketType?.available_quantity || 0
+      const availableQty = ticketType?.available_quantity || 0
+      const maxPerCustomer = ticketType?.max_per_customer
+
+      // Use the lower of available quantity and max per customer limit
+      const maxQty = maxPerCustomer ? Math.min(availableQty, maxPerCustomer) : availableQty
 
       const newQty = Math.max(0, Math.min(maxQty, current + delta))
 
@@ -296,7 +264,11 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
 
   const setTicketQuantity = (ticketTypeId: string, quantity: number) => {
     const ticketType = ticketTypes.find(tt => tt.id === ticketTypeId)
-    const maxQty = ticketType?.available_quantity || 0
+    const availableQty = ticketType?.available_quantity || 0
+    const maxPerCustomer = ticketType?.max_per_customer
+
+    // Use the lower of available quantity and max per customer limit
+    const maxQty = maxPerCustomer ? Math.min(availableQty, maxPerCustomer) : availableQty
     const newQty = Math.max(0, Math.min(maxQty, quantity))
 
     setTicketSelections(prev => {
@@ -348,6 +320,10 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
 
     if (totalTickets === 0) return 0
 
+    // No fees for free tickets
+    const netAmount = subtotal - discount
+    if (netAmount <= 0) return 0
+
     // Platform fee should be calculated on (subtotal - discount + tax)
     const taxableAmount = subtotal - discount + tax
 
@@ -394,6 +370,11 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
 
     const subtotal = calculateTotal()
     const discount = getDiscountAmount()
+
+    // No fees for free tickets
+    const netAmount = subtotal - discount
+    if (netAmount <= 0) return 0
+
     const tax = getTax()
     const platformFee = getPlatformFee()
 
@@ -408,6 +389,12 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
     // Which gives us: final = (base + 0.30) / (1 - 0.029)
     const finalWithStripeFee = (baseAmount + 0.30) / (1 - 0.029)
     return finalWithStripeFee - baseAmount
+  }
+
+  const isFreeOrder = () => {
+    const subtotal = calculateTotal()
+    const discount = getDiscountAmount()
+    return subtotal - discount <= 0
   }
 
   const handleApplyPromoCode = async () => {
@@ -515,6 +502,59 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
     }
   }
 
+  const completeFreeOrder = async () => {
+    const totalTickets = getTotalTicketCount()
+    if (totalTickets === 0 || !customerInfo.name.trim() || !customerInfo.email.trim()) {
+      return
+    }
+
+    setIsCompletingFreeOrder(true)
+    setError(null)
+
+    try {
+      const requestBody = hasTicketTypes
+        ? {
+            eventId: resolvedParams.eventId,
+            ticketSelections: Object.entries(ticketSelections).map(([ticketTypeId, quantity]) => ({
+              ticketTypeId,
+              quantity,
+            })),
+            customerName: customerInfo.name,
+            customerEmail: customerInfo.email,
+            customerPhone: customerInfo.phone || null,
+            promoCodeId: promoCodeData?.id || null,
+          }
+        : {
+            eventId: resolvedParams.eventId,
+            quantity,
+            customerName: customerInfo.name,
+            customerEmail: customerInfo.email,
+            customerPhone: customerInfo.phone || null,
+            promoCodeId: promoCodeData?.id || null,
+          }
+
+      const response = await fetch(`/api/checkout/complete-free-order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Failed to complete order')
+      }
+
+      const { orderId } = await response.json()
+
+      // Redirect to success page
+      router.push(`/${resolvedParams.businessSlug}/events/${resolvedParams.eventId}/success?orderId=${orderId}`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred')
+    } finally {
+      setIsCompletingFreeOrder(false)
+    }
+  }
+
   // Don't auto-initialize payment to avoid creating incomplete PaymentIntents
   // User will click "Continue to Payment" button instead
 
@@ -593,8 +633,11 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
   }
 
   return (
-    <div className="min-h-screen bg-background p-4 md:p-8">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen bg-background p-4 md:p-8 relative">
+      {/* Animated Background Glow from Event Image */}
+      <AnimatedImageGlow imageUrl={event.image_url} />
+
+      <div className="max-w-4xl mx-auto relative z-10">
         <Button
           variant="ghost"
           onClick={() => router.back()}
@@ -603,89 +646,9 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
           ← Back
         </Button>
 
-        <div className="grid gap-8 md:grid-cols-2">
+        <div className="grid gap-8 md:grid-cols-2 items-start">
           {/* Event Details */}
-          <div className="relative md:sticky md:top-4 md:self-start">
-            {event.image_url && (
-              <>
-                <style jsx>{`
-                  @keyframes glow-pulse {
-                    0%, 100% {
-                      opacity: 0.6;
-                      transform: scale(1);
-                    }
-                    50% {
-                      opacity: 0.9;
-                      transform: scale(1.05);
-                    }
-                  }
-                  @keyframes glow-shift-1 {
-                    0%, 100% {
-                      transform: translate(-50%, 0) rotate(0deg);
-                    }
-                    33% {
-                      transform: translate(-45%, 5%) rotate(5deg);
-                    }
-                    66% {
-                      transform: translate(-55%, -5%) rotate(-5deg);
-                    }
-                  }
-                  @keyframes glow-shift-2 {
-                    0%, 100% {
-                      transform: translate(-50%, 0) rotate(0deg) scale(1);
-                    }
-                    50% {
-                      transform: translate(-50%, 3%) rotate(10deg) scale(1.1);
-                    }
-                  }
-                  @keyframes glow-shift-3 {
-                    0%, 100% {
-                      transform: translate(-50%, 0) scale(1);
-                    }
-                    25% {
-                      transform: translate(-48%, 2%) scale(1.05);
-                    }
-                    75% {
-                      transform: translate(-52%, -2%) scale(0.95);
-                    }
-                  }
-                  .glow-layer-1 {
-                    animation: glow-pulse 4s ease-in-out infinite, glow-shift-1 8s ease-in-out infinite;
-                  }
-                  .glow-layer-2 {
-                    animation: glow-pulse 3s ease-in-out infinite 0.5s, glow-shift-2 6s ease-in-out infinite;
-                  }
-                  .glow-layer-3 {
-                    animation: glow-pulse 5s ease-in-out infinite 1s, glow-shift-3 10s ease-in-out infinite;
-                  }
-                `}</style>
-                <div
-                  className="glow-layer-1 absolute top-0 left-1/2 w-[200%] h-[500px] blur-[100px] pointer-events-none z-0"
-                  style={{
-                    background: `
-                      radial-gradient(ellipse 80% 70% at 30% 30%, ${imageGlowColors[1]}, transparent 60%)
-                    `
-                  }}
-                />
-                <div
-                  className="glow-layer-2 absolute top-0 left-1/2 w-[200%] h-[500px] blur-[120px] pointer-events-none z-0"
-                  style={{
-                    background: `
-                      radial-gradient(ellipse 80% 70% at 70% 30%, ${imageGlowColors[2]}, transparent 60%),
-                      radial-gradient(ellipse 100% 80% at 50% 60%, ${imageGlowColors[3] || imageGlowColors[0]}, transparent 70%)
-                    `
-                  }}
-                />
-                <div
-                  className="glow-layer-3 absolute top-0 left-1/2 w-[200%] h-[500px] blur-[140px] pointer-events-none z-0"
-                  style={{
-                    background: `
-                      radial-gradient(ellipse at center, ${imageGlowColors[0]}, transparent 50%)
-                    `
-                  }}
-                />
-              </>
-            )}
+          <div className="relative md:sticky md:top-4">
             <Card className="overflow-hidden p-0 relative z-10 bg-card/90 backdrop-blur-sm">
               {event.image_url && (
                 <div className="relative w-full aspect-square">
@@ -722,23 +685,63 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
                         month: 'long',
                         day: 'numeric',
                       })}
-                      {event.event_time && ` at ${event.event_time}`}
+                      {event.event_time && ` at ${formatTimeTo12Hour(event.event_time)}`}
                     </span>
                   </div>
 
-                  {event.location && (
+                  {event.location && !event.location_latitude && (
                     <div className="flex items-center gap-2">
                       <span className="font-medium">Location:</span>
                       <span className="text-muted-foreground">{event.location}</span>
                     </div>
                   )}
                 </div>
+
+                {/* Artist Lineup */}
+                {artists.length > 0 && (
+                  <div className="pt-2 border-t">
+                    <h3 className="text-sm font-medium mb-3">Artist Lineup</h3>
+                    <div className="grid grid-cols-3 gap-3">
+                      {artists.map((artist) => (
+                        <div key={artist.id} className="flex flex-col items-center gap-1">
+                          <div className="relative h-24 w-24 rounded-full overflow-hidden bg-muted">
+                            {artist.photo_url ? (
+                              <Image
+                                src={artist.photo_url}
+                                alt={artist.name}
+                                fill
+                                className="object-cover"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-muted-foreground text-xl font-medium">
+                                {artist.name.charAt(0).toUpperCase()}
+                              </div>
+                            )}
+                          </div>
+                          <span className="text-xs text-center">{artist.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Event Map - only show if location coordinates are available */}
+                {event.location && event.location_latitude && event.location_longitude && (
+                  <div className="pt-2 border-t">
+                    <EventMap
+                      location={event.location}
+                      latitude={event.location_latitude}
+                      longitude={event.location_longitude}
+                      eventTitle={event.title}
+                    />
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
 
           {/* Checkout Form */}
-          <div className="space-y-6">
+          <div className="md:sticky md:top-4 md:self-start space-y-6">
             <Card>
               <CardHeader>
                 <CardTitle>Purchase Tickets</CardTitle>
@@ -801,58 +804,64 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
                 {hasTicketTypes ? (
                   <div className="space-y-4">
                     <Label>Select Tickets</Label>
-                    {ticketTypes.map((ticketType) => (
-                      <Card key={ticketType.id}>
-                        <CardContent className="px-4 py-1.5">
-                          <div className="space-y-2">
-                            <div>
-                              <div className="flex items-center justify-between">
-                                <h3 className="font-medium">{ticketType.name}</h3>
-                                <span className="font-bold">${ticketType.price.toFixed(2)}</span>
-                              </div>
-                              {ticketType.description && (
+                    {ticketTypes.map((ticketType) => {
+                      const maxQty = ticketType.max_per_customer
+                        ? Math.min(ticketType.available_quantity, ticketType.max_per_customer)
+                        : ticketType.available_quantity
+                      return (
+                        <Card key={ticketType.id}>
+                          <CardContent className="px-4 py-1.5">
+                            <div className="space-y-2">
+                              <div>
+                                <div className="flex items-center justify-between">
+                                  <h3 className="font-medium">{ticketType.name}</h3>
+                                  <span className="font-bold">${ticketType.price.toFixed(2)}</span>
+                                </div>
+                                {ticketType.description && (
+                                  <p className="text-xs text-muted-foreground mt-0.5">
+                                    {ticketType.description}
+                                  </p>
+                                )}
                                 <p className="text-xs text-muted-foreground mt-0.5">
-                                  {ticketType.description}
+                                  {ticketType.available_quantity} available
+                                  {ticketType.max_per_customer && ` · Limit ${ticketType.max_per_customer} per customer`}
                                 </p>
-                              )}
-                              <p className="text-xs text-muted-foreground mt-0.5">
-                                {ticketType.available_quantity} available
-                              </p>
-                            </div>
+                              </div>
 
-                            <div className="flex items-center gap-4">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="icon"
-                                onClick={() => updateTicketSelection(ticketType.id, -1)}
-                                disabled={!ticketSelections[ticketType.id] || !!clientSecret}
-                              >
-                                <Minus className="h-4 w-4" />
-                              </Button>
-                              <Input
-                                type="number"
-                                min="0"
-                                max={ticketType.available_quantity}
-                                value={ticketSelections[ticketType.id] || 0}
-                                onChange={(e) => setTicketQuantity(ticketType.id, parseInt(e.target.value) || 0)}
-                                className="w-20 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                disabled={!!clientSecret}
-                              />
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="icon"
-                                onClick={() => updateTicketSelection(ticketType.id, 1)}
-                                disabled={(ticketSelections[ticketType.id] || 0) >= ticketType.available_quantity || !!clientSecret}
-                              >
-                                <Plus className="h-4 w-4" />
-                              </Button>
+                              <div className="flex items-center gap-4">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="icon"
+                                  onClick={() => updateTicketSelection(ticketType.id, -1)}
+                                  disabled={!ticketSelections[ticketType.id] || !!clientSecret}
+                                >
+                                  <Minus className="h-4 w-4" />
+                                </Button>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  max={maxQty}
+                                  value={ticketSelections[ticketType.id] || 0}
+                                  onChange={(e) => setTicketQuantity(ticketType.id, parseInt(e.target.value) || 0)}
+                                  className="w-20 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                  disabled={!!clientSecret}
+                                />
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="icon"
+                                  onClick={() => updateTicketSelection(ticketType.id, 1)}
+                                  disabled={(ticketSelections[ticketType.id] || 0) >= maxQty || !!clientSecret}
+                                >
+                                  <Plus className="h-4 w-4" />
+                                </Button>
+                              </div>
                             </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
+                          </CardContent>
+                        </Card>
+                      )
+                    })}
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -1004,13 +1013,60 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
                   )}
                 </div>
 
-                {/* Continue to Payment Button - Shows when ready but payment not initialized */}
-                {!clientSecret && totalTickets > 0 && customerInfo.name.trim() && customerInfo.email.trim() && business.stripe_onboarding_complete && (
+                {/* Terms and Conditions Checkbox - Only show if business has terms */}
+                {business.terms_and_conditions && (
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="terms"
+                      checked={termsAccepted}
+                      onCheckedChange={(checked) => setTermsAccepted(checked === true)}
+                      disabled={!!clientSecret}
+                    />
+                    <label
+                      htmlFor="terms"
+                      className="text-xs text-muted-foreground cursor-pointer"
+                    >
+                      By completing this purchase you agree to our{' '}
+                      <button
+                        type="button"
+                        onClick={() => setTermsModalOpen(true)}
+                        className="text-primary hover:underline font-medium"
+                      >
+                        terms of service
+                      </button>
+                    </label>
+                  </div>
+                )}
+
+                {/* Complete Free Order Button - Shows for $0 orders */}
+                {!clientSecret && totalTickets > 0 && customerInfo.name.trim() && customerInfo.email.trim() && isFreeOrder() && (
+                  <div className="pt-4 border-t">
+                    <Button
+                      type="button"
+                      onClick={completeFreeOrder}
+                      disabled={isCompletingFreeOrder || (business.terms_and_conditions && !termsAccepted)}
+                      className="w-full"
+                      size="lg"
+                    >
+                      {isCompletingFreeOrder ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Processing...
+                        </>
+                      ) : (
+                        'Complete Order'
+                      )}
+                    </Button>
+                  </div>
+                )}
+
+                {/* Continue to Payment Button - Shows when ready but payment not initialized (paid orders only) */}
+                {!clientSecret && totalTickets > 0 && customerInfo.name.trim() && customerInfo.email.trim() && business.stripe_onboarding_complete && !isFreeOrder() && (
                   <div className="pt-4 border-t">
                     <Button
                       type="button"
                       onClick={initializePayment}
-                      disabled={isInitializingPayment}
+                      disabled={isInitializingPayment || (business.terms_and_conditions && !termsAccepted)}
                       className="w-full"
                       size="lg"
                     >
@@ -1067,6 +1123,16 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
           </div>
         </div>
       </div>
+
+      {/* Terms Modal */}
+      {business.terms_and_conditions && (
+        <TermsModal
+          isOpen={termsModalOpen}
+          onClose={() => setTermsModalOpen(false)}
+          businessName={business.name}
+          termsAndConditions={business.terms_and_conditions}
+        />
+      )}
     </div>
   )
 }
