@@ -1,9 +1,17 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { formatCurrency } from '@/lib/utils/currency'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   Table,
   TableBody,
@@ -13,7 +21,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Mail, Eye, RefreshCcw, Search } from 'lucide-react'
+import { Eye, Search, ChevronLeft, ChevronRight } from 'lucide-react'
 
 interface Order {
   id: string
@@ -23,7 +31,7 @@ interface Order {
   customer_email: string
   customer_phone: string | null
   total: number
-  status: 'pending' | 'completed' | 'cancelled' | 'refunded'
+  status: 'pending' | 'completed' | 'cancelled' | 'refunded' | 'partially_refunded'
   created_at: string
   event_title: string
   event_date: string
@@ -31,11 +39,13 @@ interface Order {
 
 interface TicketsTableProps {
   orders: Order[]
-  businessId: string
+  businessSlug: string
 }
 
-export function TicketsTable({ orders, businessId }: TicketsTableProps) {
+export function TicketsTable({ orders, businessSlug }: TicketsTableProps) {
   const [searchQuery, setSearchQuery] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(25)
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -44,12 +54,20 @@ export function TicketsTable({ orders, businessId }: TicketsTableProps) {
       case 'pending':
         return 'warning'
       case 'refunded':
-        return 'outline'
+        return 'destructive'
+      case 'partially_refunded':
+        return 'warning'
       case 'cancelled':
         return 'destructive'
       default:
         return 'secondary'
     }
+  }
+
+  const formatStatus = (status: string) => {
+    return status.split('_').map(word =>
+      word.charAt(0).toUpperCase() + word.slice(1)
+    ).join(' ')
   }
 
   const filteredOrders = orders.filter((order) => {
@@ -63,27 +81,53 @@ export function TicketsTable({ orders, businessId }: TicketsTableProps) {
     )
   })
 
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredOrders.length / itemsPerPage)
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const endIndex = startIndex + itemsPerPage
+  const paginatedOrders = filteredOrders.slice(startIndex, endIndex)
+
+  // Reset to page 1 when search query or items per page changes
+  useMemo(() => {
+    setCurrentPage(1)
+  }, [searchQuery, itemsPerPage])
+
+  const handleItemsPerPageChange = (value: string) => {
+    setItemsPerPage(Number(value))
+    setCurrentPage(1)
+  }
+
+  const goToPage = (page: number) => {
+    setCurrentPage(Math.max(1, Math.min(page, totalPages)))
+  }
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+      <div className="flex items-center justify-between gap-4">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search by order #, customer, email, event, or status..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
+            className="pl-10"
           />
         </div>
-        {searchQuery && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setSearchQuery('')}
-          >
-            Clear
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Show</span>
+          <Select value={itemsPerPage.toString()} onValueChange={handleItemsPerPageChange}>
+            <SelectTrigger className="w-[100px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="10">10</SelectItem>
+              <SelectItem value="25">25</SelectItem>
+              <SelectItem value="50">50</SelectItem>
+              <SelectItem value="100">100</SelectItem>
+            </SelectContent>
+          </Select>
+          <span className="text-sm text-muted-foreground">per page</span>
+        </div>
       </div>
 
       {filteredOrders.length === 0 ? (
@@ -101,26 +145,22 @@ export function TicketsTable({ orders, businessId }: TicketsTableProps) {
         </div>
       ) : (
         <>
-          {searchQuery && (
-            <p className="text-sm text-muted-foreground">
-              Showing {filteredOrders.length} of {orders.length} orders
-            </p>
-          )}
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Order #</TableHead>
-                <TableHead>Event</TableHead>
-                <TableHead>Customer</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredOrders.map((order) => (
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Order #</TableHead>
+                  <TableHead>Event</TableHead>
+                  <TableHead>Customer</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paginatedOrders.map((order) => (
                 <TableRow key={order.id}>
                   <TableCell className="font-medium">{order.order_number}</TableCell>
                   <TableCell>
@@ -134,50 +174,109 @@ export function TicketsTable({ orders, businessId }: TicketsTableProps) {
                   <TableCell>{order.customer_name}</TableCell>
                   <TableCell className="text-sm">{order.customer_email}</TableCell>
                   <TableCell className="text-right font-medium">
-                    ${order.total.toFixed(2)}
+                    {formatCurrency(order.total)}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={getStatusColor(order.status)} className="capitalize">
-                      {order.status}
+                    <Badge variant={getStatusColor(order.status)}>
+                      {formatStatus(order.status)}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-sm">
                     {new Date(order.created_at).toLocaleDateString()}
                   </TableCell>
                   <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        asChild
-                        title="View Details"
-                      >
-                        <Link href={`/business/${businessId}/tickets/${order.id}`}>
-                          <Eye className="h-4 w-4" />
-                        </Link>
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Send Tickets (Coming Soon)"
-                        disabled
-                      >
-                        <Mail className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        title="Refund (Coming Soon)"
-                        disabled
-                      >
-                        <RefreshCcw className="h-4 w-4" />
-                      </Button>
-                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      asChild
+                    >
+                      <Link href={`/${businessSlug}/dashboard/tickets/${order.id}`}>
+                        <Eye className="mr-2 h-4 w-4" />
+                        View Details
+                      </Link>
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
-            </TableBody>
-          </Table>
+              </TableBody>
+            </Table>
+          </div>
+
+          {/* Pagination Controls */}
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-muted-foreground">
+              Showing {startIndex + 1} to {Math.min(endIndex, filteredOrders.length)} of{' '}
+              {filteredOrders.length} orders
+              {searchQuery && (
+                <Button
+                  variant="link"
+                  size="sm"
+                  onClick={() => setSearchQuery('')}
+                  className="ml-2 h-auto p-0"
+                >
+                  Clear search
+                </Button>
+              )}
+            </div>
+
+            {totalPages > 1 && (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => goToPage(currentPage - 1)}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Previous
+                </Button>
+
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                    // Show first page, last page, current page, and pages around current
+                    const showPage =
+                      page === 1 ||
+                      page === totalPages ||
+                      (page >= currentPage - 1 && page <= currentPage + 1)
+
+                    if (!showPage) {
+                      // Show ellipsis
+                      if (page === currentPage - 2 || page === currentPage + 2) {
+                        return (
+                          <span key={page} className="px-2 text-muted-foreground">
+                            ...
+                          </span>
+                        )
+                      }
+                      return null
+                    }
+
+                    return (
+                      <Button
+                        key={page}
+                        variant={currentPage === page ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => goToPage(page)}
+                        className="min-w-[40px]"
+                      >
+                        {page}
+                      </Button>
+                    )
+                  })}
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => goToPage(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+          </div>
         </>
       )}
     </div>

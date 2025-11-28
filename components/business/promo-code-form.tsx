@@ -33,6 +33,7 @@ interface TicketType {
 interface PromoCodeFormProps {
   eventId: string
   businessId: string
+  businessSlug: string
   ticketTypes: TicketType[]
   initialData?: {
     id: string
@@ -47,7 +48,7 @@ interface PromoCodeFormProps {
   }
 }
 
-export function PromoCodeForm({ eventId, businessId, ticketTypes, initialData }: PromoCodeFormProps) {
+export function PromoCodeForm({ eventId, businessId, businessSlug, ticketTypes, initialData }: PromoCodeFormProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({
@@ -89,7 +90,7 @@ export function PromoCodeForm({ eventId, businessId, ticketTypes, initialData }:
         throw new Error(data.error || 'Failed to save promo code')
       }
 
-      router.push(`/business/${businessId}/events/${eventId}?tab=promo`)
+      router.push(`/${businessSlug}/dashboard/events/${eventId}?tab=promo`)
       router.refresh()
     } catch (error) {
       console.error('Error saving promo code:', error)

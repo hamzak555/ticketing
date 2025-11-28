@@ -1,10 +1,12 @@
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { BusinessForm } from '@/components/admin/business-form'
+import { AdminDashboardLayout } from '@/components/admin/admin-dashboard-layout'
 
 export default function NewBusinessPage() {
   return (
-    <div className="space-y-6">
+    <AdminDashboardLayout>
+      <div className="space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="sm" asChild>
           <Link href="/admin/businesses">← Back to Businesses</Link>
@@ -19,6 +21,7 @@ export default function NewBusinessPage() {
       </div>
 
       <BusinessForm />
-    </div>
+      </div>
+    </AdminDashboardLayout>
   )
 }

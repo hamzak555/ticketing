@@ -58,21 +58,12 @@ function PaymentForm({
   business,
   total,
   customerInfo,
-  orderSummary,
 }: {
   clientSecret: string
   event: Event
   business: Business
   total: number
   customerInfo: { name: string; email: string; phone: string }
-  orderSummary: {
-    subtotal: number
-    discount: number
-    tax: number
-    platformFee: number
-    stripeFee: number
-    totalTickets: number
-  }
 }) {
   const stripe = useStripe()
   const elements = useElements()
@@ -141,63 +132,20 @@ function PaymentForm({
         </div>
       </div>
 
-      <div className="pt-4 border-t">
-        <div className="space-y-2 mb-4">
-          {/* Subtotal */}
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">
-              Subtotal ({orderSummary.totalTickets} ticket{orderSummary.totalTickets !== 1 ? 's' : ''})
-            </span>
-            <span className="text-muted-foreground">${orderSummary.subtotal.toFixed(2)}</span>
-          </div>
-
-          {/* Discount */}
-          {orderSummary.discount > 0 && (
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-green-600 dark:text-green-400">Discount</span>
-              <span className="text-green-600 dark:text-green-400">-${orderSummary.discount.toFixed(2)}</span>
-            </div>
-          )}
-
-          {/* Tax */}
-          {orderSummary.tax > 0 && (
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Tax ({business.tax_percentage}%)</span>
-              <span className="text-muted-foreground">${orderSummary.tax.toFixed(2)}</span>
-            </div>
-          )}
-
-          {/* Processing Fees */}
-          {(orderSummary.platformFee > 0 || orderSummary.stripeFee > 0) && (
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Processing fees</span>
-              <span className="text-muted-foreground">
-                ${(orderSummary.platformFee + orderSummary.stripeFee).toFixed(2)}
-              </span>
-            </div>
-          )}
-        </div>
-
-        <div className="flex items-center justify-between mb-4 pt-2 border-t">
-          <span className="font-medium">Total</span>
-          <span className="text-2xl font-bold">${total.toFixed(2)}</span>
-        </div>
-
-        <Button
-          type="submit"
-          className="w-full"
-          disabled={!stripe || isProcessing}
-        >
-          {isProcessing ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Processing Payment...
-            </>
-          ) : (
-            `Pay $${total.toFixed(2)}`
-          )}
-        </Button>
-      </div>
+      <Button
+        type="submit"
+        className="w-full"
+        disabled={!stripe || isProcessing}
+      >
+        {isProcessing ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Processing Payment...
+          </>
+        ) : (
+          `Pay $${total.toFixed(2)}`
+        )}
+      </Button>
     </form>
   )
 }
@@ -238,7 +186,7 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
 
   const [clientSecret, setClientSecret] = useState<string | null>(null)
   const [stripePromise, setStripePromise] = useState<any>(null)
-  const [showPaymentForm, setShowPaymentForm] = useState(false)
+  const [isInitializingPayment, setIsInitializingPayment] = useState(false)
   const [imageGlowColors, setImageGlowColors] = useState<string[]>([
     'rgba(255, 255, 255, 0.1)',
     'rgba(200, 200, 200, 0.1)',
@@ -249,7 +197,6 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
 
   useEffect(() => {
     fetchEventDetails()
-    fetchPlatformSettings()
   }, [])
 
   // Extract multiple dominant colors from image for multi-color glow effect
@@ -322,22 +269,11 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
       setEvent(data.event)
       setBusiness(data.business)
       setTicketTypes(data.ticketTypes || [])
+      setPlatformSettings(data.platformSettings || null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load event')
     } finally {
       setIsLoading(false)
-    }
-  }
-
-  const fetchPlatformSettings = async () => {
-    try {
-      const response = await fetch('/api/platform-settings')
-      if (response.ok) {
-        const data = await response.json()
-        setPlatformSettings(data)
-      }
-    } catch (err) {
-      console.error('Failed to fetch platform settings:', err)
     }
   }
 
@@ -406,9 +342,14 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
     if (!platformSettings || !business) return 0
 
     const subtotal = calculateTotal()
+    const discount = getDiscountAmount()
+    const tax = getTax()
     const totalTickets = getTotalTicketCount()
 
     if (totalTickets === 0) return 0
+
+    // Platform fee should be calculated on (subtotal - discount + tax)
+    const taxableAmount = subtotal - discount + tax
 
     let fee = 0
     switch (platformSettings.platform_fee_type) {
@@ -417,12 +358,12 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
         break
 
       case 'percentage':
-        fee = (subtotal * platformSettings.percentage_fee) / 100
+        fee = (taxableAmount * platformSettings.percentage_fee) / 100
         break
 
       case 'higher_of_both': {
         const flatFee = platformSettings.flat_fee_amount
-        const percentageFee = (subtotal * platformSettings.percentage_fee) / 100
+        const percentageFee = (taxableAmount * platformSettings.percentage_fee) / 100
         fee = Math.max(flatFee, percentageFee)
         break
       }
@@ -456,8 +397,17 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
     const tax = getTax()
     const platformFee = getPlatformFee()
 
-    // Calculate Stripe fee on the amount customer will pay (including tax)
-    return calculateStripeFee(subtotal - discount + tax + platformFee)
+    const baseAmount = subtotal - discount + tax + platformFee
+
+    // Don't calculate Stripe fee if there's nothing to charge
+    if (baseAmount <= 0) return 0
+
+    // Use "gross up" formula to calculate the Stripe fee
+    // Since Stripe calculates their fee on the final amount (including their fee),
+    // we need to solve: final = base + (final * 0.029 + 0.30)
+    // Which gives us: final = (base + 0.30) / (1 - 0.029)
+    const finalWithStripeFee = (baseAmount + 0.30) / (1 - 0.029)
+    return finalWithStripeFee - baseAmount
   }
 
   const handleApplyPromoCode = async () => {
@@ -489,6 +439,7 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
       if (data.valid && data.promoCode) {
         setPromoCodeData(data.promoCode)
         setPromoCodeError(null)
+        // Note: If payment is already initialized, user needs to restart checkout
       } else {
         setPromoCodeError(data.message || 'Invalid promo code')
         setPromoCodeData(null)
@@ -505,33 +456,20 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
     setPromoCode('')
     setPromoCodeData(null)
     setPromoCodeError(null)
+    // Note: If payment is already initialized, user needs to restart checkout
   }
 
-  const handleContinueToPayment = async () => {
-    // Validate required fields
-    const errors = {
-      name: !customerInfo.name.trim(),
-      email: !customerInfo.email.trim(),
-    }
-
-    setFieldErrors(errors)
-
-    if (errors.name || errors.email) {
-      return
-    }
-
+  const initializePayment = async () => {
     const totalTickets = getTotalTicketCount()
-    if (totalTickets === 0) {
-      setError('Please select at least one ticket')
+    if (totalTickets === 0 || !customerInfo.name.trim() || !customerInfo.email.trim()) {
       return
     }
 
     if (!business?.stripe_onboarding_complete) {
-      setError('This business has not completed payment setup')
       return
     }
 
-    setIsLoading(true)
+    setIsInitializingPayment(true)
     setError(null)
 
     try {
@@ -570,15 +508,17 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
       const { clientSecret, publishableKey } = await response.json()
       setClientSecret(clientSecret)
       setStripePromise(loadStripe(publishableKey))
-      setShowPaymentForm(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
     } finally {
-      setIsLoading(false)
+      setIsInitializingPayment(false)
     }
   }
 
-  if (isLoading && !showPaymentForm) {
+  // Don't auto-initialize payment to avoid creating incomplete PaymentIntents
+  // User will click "Continue to Payment" button instead
+
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -801,302 +741,326 @@ export default function CheckoutPage({ params }: { params: Promise<{ businessSlu
           <div className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>{showPaymentForm ? 'Payment' : 'Purchase Tickets'}</CardTitle>
+                <CardTitle>Purchase Tickets</CardTitle>
                 <CardDescription>
-                  {showPaymentForm ? 'Complete your payment' : 'Select your tickets and enter your information'}
+                  Select your tickets and complete your purchase
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                {!showPaymentForm ? (
-                  <>
-                    {error && (
-                      <div className="p-4 bg-destructive/10 border border-destructive rounded-md">
-                        <p className="text-sm text-destructive">{error}</p>
-                      </div>
-                    )}
+                {error && (
+                  <div className="p-4 bg-destructive/10 border border-destructive rounded-md">
+                    <p className="text-sm text-destructive">{error}</p>
+                  </div>
+                )}
 
-                    <div className="space-y-2">
-                      <Label htmlFor="name">Full Name *</Label>
-                      <Input
-                        id="name"
-                        value={customerInfo.name}
-                        onChange={(e) => {
-                          setCustomerInfo({ ...customerInfo, name: e.target.value })
-                          setFieldErrors({ ...fieldErrors, name: false })
-                        }}
-                        placeholder="John Doe"
-                        required
-                        className={fieldErrors.name ? 'border-red-500 focus-visible:ring-red-500' : ''}
-                      />
-                    </div>
+                <div className="space-y-2">
+                  <Label htmlFor="name">Full Name *</Label>
+                  <Input
+                    id="name"
+                    value={customerInfo.name}
+                    onChange={(e) => {
+                      setCustomerInfo({ ...customerInfo, name: e.target.value })
+                      setFieldErrors({ ...fieldErrors, name: false })
+                    }}
+                    placeholder="John Doe"
+                    required
+                    disabled={!!clientSecret}
+                    className={fieldErrors.name ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                  />
+                </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="email">Email *</Label>
-                      <Input
-                        id="email"
-                        type="email"
-                        value={customerInfo.email}
-                        onChange={(e) => {
-                          setCustomerInfo({ ...customerInfo, email: e.target.value })
-                          setFieldErrors({ ...fieldErrors, email: false })
-                        }}
-                        placeholder="john@example.com"
-                        required
-                        className={fieldErrors.email ? 'border-red-500 focus-visible:ring-red-500' : ''}
-                      />
-                    </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email *</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={customerInfo.email}
+                    onChange={(e) => {
+                      setCustomerInfo({ ...customerInfo, email: e.target.value })
+                      setFieldErrors({ ...fieldErrors, email: false })
+                    }}
+                    placeholder="john@example.com"
+                    required
+                    disabled={!!clientSecret}
+                    className={fieldErrors.email ? 'border-red-500 focus-visible:ring-red-500' : ''}
+                  />
+                </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="phone">Phone Number</Label>
-                      <Input
-                        id="phone"
-                        type="tel"
-                        value={customerInfo.phone}
-                        onChange={(e) => setCustomerInfo({ ...customerInfo, phone: e.target.value })}
-                        placeholder="+1 (555) 123-4567"
-                      />
-                    </div>
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Phone Number</Label>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    value={customerInfo.phone}
+                    onChange={(e) => setCustomerInfo({ ...customerInfo, phone: e.target.value })}
+                    placeholder="+1 (555) 123-4567"
+                    disabled={!!clientSecret}
+                  />
+                </div>
 
-                    {hasTicketTypes ? (
-                      <div className="space-y-4">
-                        <Label>Select Tickets</Label>
-                        {ticketTypes.map((ticketType) => (
-                          <Card key={ticketType.id}>
-                            <CardContent className="px-4 py-1.5">
-                              <div className="space-y-2">
-                                <div>
-                                  <div className="flex items-center justify-between">
-                                    <h3 className="font-medium">{ticketType.name}</h3>
-                                    <span className="font-bold">${ticketType.price.toFixed(2)}</span>
-                                  </div>
-                                  {ticketType.description && (
-                                    <p className="text-xs text-muted-foreground mt-0.5">
-                                      {ticketType.description}
-                                    </p>
-                                  )}
-                                  <p className="text-xs text-muted-foreground mt-0.5">
-                                    {ticketType.available_quantity} available
-                                  </p>
-                                </div>
-
-                                <div className="flex items-center gap-4">
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="icon"
-                                    onClick={() => updateTicketSelection(ticketType.id, -1)}
-                                    disabled={!ticketSelections[ticketType.id]}
-                                  >
-                                    <Minus className="h-4 w-4" />
-                                  </Button>
-                                  <Input
-                                    type="number"
-                                    min="0"
-                                    max={ticketType.available_quantity}
-                                    value={ticketSelections[ticketType.id] || 0}
-                                    onChange={(e) => setTicketQuantity(ticketType.id, parseInt(e.target.value) || 0)}
-                                    className="w-20 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                  />
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="icon"
-                                    onClick={() => updateTicketSelection(ticketType.id, 1)}
-                                    disabled={(ticketSelections[ticketType.id] || 0) >= ticketType.available_quantity}
-                                  >
-                                    <Plus className="h-4 w-4" />
-                                  </Button>
-                                </div>
+                {hasTicketTypes ? (
+                  <div className="space-y-4">
+                    <Label>Select Tickets</Label>
+                    {ticketTypes.map((ticketType) => (
+                      <Card key={ticketType.id}>
+                        <CardContent className="px-4 py-1.5">
+                          <div className="space-y-2">
+                            <div>
+                              <div className="flex items-center justify-between">
+                                <h3 className="font-medium">{ticketType.name}</h3>
+                                <span className="font-bold">${ticketType.price.toFixed(2)}</span>
                               </div>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <Label>Ticket Price</Label>
-                          <span className="font-medium">${event.ticket_price ? event.ticket_price.toFixed(2) : '0.00'}</span>
-                        </div>
-                        <Label>Quantity</Label>
-                        <div className="flex items-center gap-4">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="icon"
-                            onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                            disabled={quantity <= 1}
-                          >
-                            <Minus className="h-4 w-4" />
-                          </Button>
-                          <span className="text-2xl font-bold w-12 text-center">{quantity}</span>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="icon"
-                            onClick={() => setQuantity(Math.min(event.available_tickets, quantity + 1))}
-                            disabled={quantity >= event.available_tickets}
-                          >
-                            <Plus className="h-4 w-4" />
-                          </Button>
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          Maximum {event.available_tickets} tickets available
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Promo Code Section */}
-                    <div className="space-y-2">
-                      <Label htmlFor="promoCode">Promo Code</Label>
-                      <div className="flex gap-2">
-                        <Input
-                          id="promoCode"
-                          value={promoCode}
-                          onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
-                          placeholder="Enter promo code"
-                          disabled={!!promoCodeData}
-                          className="uppercase"
-                        />
-                        {!promoCodeData ? (
-                          <Button
-                            type="button"
-                            onClick={handleApplyPromoCode}
-                            disabled={isValidatingPromo || !promoCode.trim()}
-                          >
-                            {isValidatingPromo ? (
-                              <>
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              </>
-                            ) : (
-                              'Apply'
-                            )}
-                          </Button>
-                        ) : (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={handleRemovePromoCode}
-                          >
-                            Remove
-                          </Button>
-                        )}
-                      </div>
-                      {promoCodeError && (
-                        <p className="text-xs text-destructive">{promoCodeError}</p>
-                      )}
-                      {promoCodeData && (
-                        <p className="text-xs text-green-600">
-                          Promo code applied: {promoCodeData.discount_type === 'percentage'
-                            ? `${promoCodeData.discount_value}% off`
-                            : `$${promoCodeData.discount_value.toFixed(2)} off`}
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="pt-4 border-t">
-                      {totalTickets > 0 && (discount > 0 || tax > 0 || platformFee > 0 || stripeFee > 0) && (
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm text-muted-foreground">Subtotal</span>
-                          <span className="text-sm text-muted-foreground">${subtotal.toFixed(2)}</span>
-                        </div>
-                      )}
-                      {totalTickets > 0 && discount > 0 && (
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm text-green-600">Discount</span>
-                          <span className="text-sm text-green-600">-${discount.toFixed(2)}</span>
-                        </div>
-                      )}
-                      {totalTickets > 0 && tax > 0 && (
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm text-muted-foreground">Tax ({business?.tax_percentage || 0}%)</span>
-                          <span className="text-sm text-muted-foreground">${tax.toFixed(2)}</span>
-                        </div>
-                      )}
-                      {totalTickets > 0 && (platformFee > 0 || stripeFee > 0) && (
-                        <div className="flex items-center justify-between mb-2 group relative">
-                          <div className="flex items-center gap-1">
-                            <span className="text-sm text-muted-foreground">Processing Fees</span>
-                            <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                          </div>
-                          <span className="text-sm text-muted-foreground">${(platformFee + stripeFee).toFixed(2)}</span>
-
-                          {/* Tooltip */}
-                          <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-50">
-                            <div className="bg-popover border border-border rounded-lg p-3 shadow-lg min-w-[250px]">
-                              <p className="text-xs font-medium mb-2">Fee Breakdown</p>
-                              {platformFee > 0 && (
-                                <div className="flex justify-between text-xs mb-1">
-                                  <span className="text-muted-foreground">Platform Fee:</span>
-                                  <span className="font-medium">${platformFee.toFixed(2)}</span>
-                                </div>
-                              )}
-                              {stripeFee > 0 && (
-                                <div className="flex justify-between text-xs">
-                                  <span className="text-muted-foreground">Stripe Processing:</span>
-                                  <span className="font-medium">${stripeFee.toFixed(2)}</span>
-                                </div>
-                              )}
-                              {(business?.stripe_fee_payer === 'business' || business?.platform_fee_payer === 'business') && (
-                                <p className="text-xs text-muted-foreground mt-2 pt-2 border-t">
-                                  {business.stripe_fee_payer === 'business' && business.platform_fee_payer === 'business' && 'All fees covered by ' + business.name}
-                                  {business.stripe_fee_payer === 'business' && business.platform_fee_payer === 'customer' && 'Stripe fees covered by ' + business.name}
-                                  {business.stripe_fee_payer === 'customer' && business.platform_fee_payer === 'business' && 'Platform fees covered by ' + business.name}
+                              {ticketType.description && (
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  {ticketType.description}
                                 </p>
                               )}
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                {ticketType.available_quantity} available
+                              </p>
+                            </div>
+
+                            <div className="flex items-center gap-4">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                onClick={() => updateTicketSelection(ticketType.id, -1)}
+                                disabled={!ticketSelections[ticketType.id] || !!clientSecret}
+                              >
+                                <Minus className="h-4 w-4" />
+                              </Button>
+                              <Input
+                                type="number"
+                                min="0"
+                                max={ticketType.available_quantity}
+                                value={ticketSelections[ticketType.id] || 0}
+                                onChange={(e) => setTicketQuantity(ticketType.id, parseInt(e.target.value) || 0)}
+                                className="w-20 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                disabled={!!clientSecret}
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                onClick={() => updateTicketSelection(ticketType.id, 1)}
+                                disabled={(ticketSelections[ticketType.id] || 0) >= ticketType.available_quantity || !!clientSecret}
+                              >
+                                <Plus className="h-4 w-4" />
+                              </Button>
                             </div>
                           </div>
-                        </div>
-                      )}
-                      <div className="flex items-center justify-between mb-4">
-                        <span className="font-medium">Total ({totalTickets} {totalTickets === 1 ? 'ticket' : 'tickets'})</span>
-                        <span className="text-2xl font-bold">${total.toFixed(2)}</span>
-                      </div>
-
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Ticket Price</Label>
+                      <span className="font-medium">${event.ticket_price ? event.ticket_price.toFixed(2) : '0.00'}</span>
+                    </div>
+                    <Label>Quantity</Label>
+                    <div className="flex items-center gap-4">
                       <Button
-                        className="w-full"
-                        onClick={handleContinueToPayment}
-                        disabled={isLoading || !business.stripe_onboarding_complete || totalTickets === 0}
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                        disabled={quantity <= 1 || !!clientSecret}
                       >
-                        {isLoading ? (
+                        <Minus className="h-4 w-4" />
+                      </Button>
+                      <span className="text-2xl font-bold w-12 text-center">{quantity}</span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setQuantity(Math.min(event.available_tickets, quantity + 1))}
+                        disabled={quantity >= event.available_tickets || !!clientSecret}
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Maximum {event.available_tickets} tickets available
+                    </p>
+                  </div>
+                )}
+
+                {/* Promo Code Section */}
+                <div className="space-y-2">
+                  <Label htmlFor="promoCode">Promo Code</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="promoCode"
+                      value={promoCode}
+                      onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                      placeholder="Enter promo code"
+                      disabled={!!promoCodeData || !!clientSecret}
+                      className="uppercase"
+                    />
+                    {!promoCodeData ? (
+                      <Button
+                        type="button"
+                        onClick={handleApplyPromoCode}
+                        disabled={isValidatingPromo || !promoCode.trim() || !!clientSecret}
+                      >
+                        {isValidatingPromo ? (
                           <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Loading...
+                            <Loader2 className="h-4 w-4 animate-spin" />
                           </>
                         ) : (
-                          'Continue to Payment'
+                          'Apply'
                         )}
                       </Button>
-
-                      {!business.stripe_onboarding_complete && (
-                        <p className="text-xs text-destructive mt-2 text-center">
-                          Payment processing is not yet available for this event
-                        </p>
-                      )}
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    {clientSecret && stripePromise && (
-                      <Elements stripe={stripePromise} options={elementsOptions}>
-                        <PaymentForm
-                          clientSecret={clientSecret}
-                          event={event}
-                          business={business}
-                          total={total}
-                          customerInfo={customerInfo}
-                          orderSummary={{
-                            subtotal,
-                            discount,
-                            tax,
-                            platformFee,
-                            stripeFee,
-                            totalTickets,
-                          }}
-                        />
-                      </Elements>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleRemovePromoCode}
+                        disabled={!!clientSecret}
+                      >
+                        Remove
+                      </Button>
                     )}
-                  </>
+                  </div>
+                  {promoCodeError && (
+                    <p className="text-xs text-destructive">{promoCodeError}</p>
+                  )}
+                  {promoCodeData && (
+                    <p className="text-xs text-green-600">
+                      Promo code applied: {promoCodeData.discount_type === 'percentage'
+                        ? `${promoCodeData.discount_value}% off`
+                        : `$${promoCodeData.discount_value.toFixed(2)} off`}
+                    </p>
+                  )}
+                </div>
+
+                {/* Order Summary */}
+                <div className="pt-4 border-t">
+                  {totalTickets > 0 && (discount > 0 || tax > 0 || platformFee > 0 || stripeFee > 0) && (
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm text-muted-foreground">Subtotal</span>
+                      <span className="text-sm text-muted-foreground">${subtotal.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {totalTickets > 0 && discount > 0 && (
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm text-green-600">Discount</span>
+                      <span className="text-sm text-green-600">-${discount.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {totalTickets > 0 && tax > 0 && (
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm text-muted-foreground">Tax ({business?.tax_percentage || 0}%)</span>
+                      <span className="text-sm text-muted-foreground">${tax.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {totalTickets > 0 && (platformFee > 0 || stripeFee > 0) && (
+                    <div className="flex items-center justify-between mb-2 group relative">
+                      <div className="flex items-center gap-1">
+                        <span className="text-sm text-muted-foreground">Processing Fees</span>
+                        <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                      </div>
+                      <span className="text-sm text-muted-foreground">${(platformFee + stripeFee).toFixed(2)}</span>
+
+                      {/* Tooltip */}
+                      <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-50">
+                        <div className="bg-popover border border-border rounded-lg p-3 shadow-lg min-w-[250px]">
+                          <p className="text-xs font-medium mb-2">Fee Breakdown</p>
+                          {platformFee > 0 && (
+                            <div className="flex justify-between text-xs mb-1">
+                              <span className="text-muted-foreground">Platform Fee:</span>
+                              <span className="font-medium">${platformFee.toFixed(2)}</span>
+                            </div>
+                          )}
+                          {stripeFee > 0 && (
+                            <div className="flex justify-between text-xs">
+                              <span className="text-muted-foreground">Stripe Processing:</span>
+                              <span className="font-medium">${stripeFee.toFixed(2)}</span>
+                            </div>
+                          )}
+                          {(business?.stripe_fee_payer === 'business' || business?.platform_fee_payer === 'business') && (
+                            <p className="text-xs text-muted-foreground mt-2 pt-2 border-t">
+                              {business.stripe_fee_payer === 'business' && business.platform_fee_payer === 'business' && 'All fees covered by ' + business.name}
+                              {business.stripe_fee_payer === 'business' && business.platform_fee_payer === 'customer' && 'Stripe fees covered by ' + business.name}
+                              {business.stripe_fee_payer === 'customer' && business.platform_fee_payer === 'business' && 'Platform fees covered by ' + business.name}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="font-medium">Total ({totalTickets} {totalTickets === 1 ? 'ticket' : 'tickets'})</span>
+                    <span className="text-2xl font-bold">${total.toFixed(2)}</span>
+                  </div>
+
+                  {!business.stripe_onboarding_complete && (
+                    <p className="text-xs text-destructive mt-2 text-center">
+                      Payment processing is not yet available for this event
+                    </p>
+                  )}
+                </div>
+
+                {/* Continue to Payment Button - Shows when ready but payment not initialized */}
+                {!clientSecret && totalTickets > 0 && customerInfo.name.trim() && customerInfo.email.trim() && business.stripe_onboarding_complete && (
+                  <div className="pt-4 border-t">
+                    <Button
+                      type="button"
+                      onClick={initializePayment}
+                      disabled={isInitializingPayment}
+                      className="w-full"
+                      size="lg"
+                    >
+                      {isInitializingPayment ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Loading Payment...
+                        </>
+                      ) : (
+                        'Continue to Payment'
+                      )}
+                    </Button>
+                  </div>
+                )}
+
+                {/* Payment Form - Shows when payment intent is ready */}
+                {clientSecret && stripePromise && (
+                  <div className="pt-4 border-t space-y-4">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm text-muted-foreground">Enter your payment details below</p>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setClientSecret(null)
+                          setStripePromise(null)
+                        }}
+                      >
+                        Edit Order
+                      </Button>
+                    </div>
+                    <Elements stripe={stripePromise} options={elementsOptions}>
+                      <PaymentForm
+                        clientSecret={clientSecret}
+                        event={event}
+                        business={business}
+                        total={total}
+                        customerInfo={customerInfo}
+                      />
+                    </Elements>
+                  </div>
+                )}
+
+                {/* Loading state while initializing payment */}
+                {isInitializingPayment && (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground mr-2" />
+                    <span className="text-sm text-muted-foreground">Loading payment...</span>
+                  </div>
                 )}
               </CardContent>
             </Card>

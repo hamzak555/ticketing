@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { stripe } from '@/lib/stripe/server'
 import { createClient } from '@/lib/supabase/server'
-import { getPlatformSettings } from '@/lib/db/platform-settings'
+import { getBusinessFeeSettings } from '@/lib/db/platform-settings'
 
 export async function POST(
   request: NextRequest,
@@ -68,8 +68,8 @@ export async function POST(
     console.log('Creating account link for account:', accountId)
     const accountLink = await stripe.accountLinks.create({
       account: accountId,
-      refresh_url: `${process.env.NEXT_PUBLIC_APP_URL}/business/${businessId}/settings/stripe?refresh=true`,
-      return_url: `${process.env.NEXT_PUBLIC_APP_URL}/business/${businessId}/settings/stripe?success=true`,
+      refresh_url: `${process.env.NEXT_PUBLIC_APP_URL}/${business.slug}/dashboard/settings/stripe?refresh=true`,
+      return_url: `${process.env.NEXT_PUBLIC_APP_URL}/${business.slug}/dashboard/settings/stripe?success=true`,
       type: 'account_onboarding',
     })
 
@@ -91,10 +91,10 @@ export async function GET(
     const { businessId } = await context.params
     const supabase = await createClient()
 
-    // Get business details
+    // Get business details including custom fee settings
     const { data: business, error: businessError } = await supabase
       .from('businesses')
-      .select('stripe_account_id, stripe_onboarding_complete, stripe_fee_payer, platform_fee_payer, tax_percentage')
+      .select('*')
       .eq('id', businessId)
       .single()
 
@@ -105,8 +105,8 @@ export async function GET(
       )
     }
 
-    // Get platform settings
-    const platformSettings = await getPlatformSettings()
+    // Get business-specific fee settings (custom or global)
+    const feeSettings = await getBusinessFeeSettings(business)
 
     if (!business.stripe_account_id) {
       return NextResponse.json({
@@ -115,7 +115,7 @@ export async function GET(
         stripe_fee_payer: business.stripe_fee_payer || 'customer',
         platform_fee_payer: business.platform_fee_payer || 'customer',
         tax_percentage: business.tax_percentage || 0,
-        platform_settings: platformSettings,
+        platform_settings: feeSettings,
       })
     }
 
@@ -140,7 +140,7 @@ export async function GET(
       stripe_fee_payer: business.stripe_fee_payer || 'customer',
       platform_fee_payer: business.platform_fee_payer || 'customer',
       tax_percentage: business.tax_percentage || 0,
-      platform_settings: platformSettings,
+      platform_settings: feeSettings,
     })
   } catch (error) {
     console.error('Stripe status check error:', error)

@@ -17,6 +17,7 @@ import Image from 'next/image'
 
 interface EventFormProps {
   businessId: string
+  businessSlug: string
   initialData?: {
     id?: string
     title: string
@@ -29,7 +30,7 @@ interface EventFormProps {
   }
 }
 
-export function EventForm({ businessId, initialData }: EventFormProps) {
+export function EventForm({ businessId, businessSlug, initialData }: EventFormProps) {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -145,7 +146,7 @@ export function EventForm({ businessId, initialData }: EventFormProps) {
         throw new Error(data.error || 'Failed to save event')
       }
 
-      router.push(`/business/${businessId}/events`)
+      router.push(`/${businessSlug}/dashboard/events`)
       router.refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
@@ -330,7 +331,7 @@ export function EventForm({ businessId, initialData }: EventFormProps) {
             <Button
               type="button"
               variant="outline"
-              onClick={() => router.push(`/business/${businessId}/events`)}
+              onClick={() => router.push(`/${businessSlug}/dashboard/events`)}
               disabled={isLoading}
             >
               Cancel

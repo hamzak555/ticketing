@@ -17,9 +17,10 @@ interface EventCardHoverProps {
     image_url: string | null
   }
   businessId: string
+  businessSlug: string
 }
 
-export function EventCardHover({ event, businessId }: EventCardHoverProps) {
+export function EventCardHover({ event, businessId, businessSlug }: EventCardHoverProps) {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -81,7 +82,7 @@ export function EventCardHover({ event, businessId }: EventCardHoverProps) {
           </p>
         </div>
         <Button variant="ghost" size="sm" asChild className="flex-shrink-0 relative z-20">
-          <Link href={`/business/${businessId}/events/${event.id}`}>Manage</Link>
+          <Link href={`/${businessSlug}/dashboard/events/${event.id}`}>Manage</Link>
         </Button>
       </div>
     </div>

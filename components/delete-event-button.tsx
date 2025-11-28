@@ -19,6 +19,7 @@ interface DeleteEventButtonProps {
   eventId: string
   eventTitle: string
   businessId: string
+  businessSlug: string
   canDelete: boolean
   reasonCannotDelete?: string
 }
@@ -27,6 +28,7 @@ export function DeleteEventButton({
   eventId,
   eventTitle,
   businessId,
+  businessSlug,
   canDelete,
   reasonCannotDelete,
 }: DeleteEventButtonProps) {
@@ -48,7 +50,7 @@ export function DeleteEventButton({
       }
 
       // Redirect to events list
-      router.push(`/business/${businessId}/events`)
+      router.push(`/${businessSlug}/dashboard/events`)
       router.refresh()
     } catch (error) {
       console.error('Error deleting event:', error)

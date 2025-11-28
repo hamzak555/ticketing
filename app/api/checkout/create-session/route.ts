@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { stripe } from '@/lib/stripe/server'
 import { createClient } from '@/lib/supabase/server'
-import { getPlatformSettings, calculatePlatformFee } from '@/lib/db/platform-settings'
+import { getBusinessFeeSettings, calculatePlatformFee } from '@/lib/db/platform-settings'
 
 export async function POST(request: NextRequest) {
   try {
@@ -50,9 +50,20 @@ export async function POST(request: NextRequest) {
     const unitAmount = Math.round(event.ticket_price * 100) // Convert to cents
     const totalAmount = unitAmount * quantity
 
-    // Get platform settings and calculate application fee
-    const platformSettings = await getPlatformSettings()
-    const applicationFee = calculatePlatformFee(event.ticket_price, quantity, platformSettings)
+    // Calculate tax
+    const taxPercentage = event.businesses.tax_percentage || 0
+    const taxInCents = Math.round((totalAmount * taxPercentage) / 100)
+
+    // Get business-specific fee settings (custom or global) and calculate application fee
+    // Platform fee should be calculated on the amount INCLUDING tax
+    const feeSettings = await getBusinessFeeSettings(event.businesses)
+    const taxableAmountWithTaxInCents = totalAmount + taxInCents
+    const applicationFee = calculatePlatformFee(
+      event.ticket_price,
+      quantity,
+      feeSettings,
+      taxableAmountWithTaxInCents
+    )
 
     // Create Stripe Checkout Session
     const session = await stripe.checkout.sessions.create({

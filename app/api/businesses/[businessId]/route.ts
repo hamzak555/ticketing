@@ -7,6 +7,29 @@ interface RouteContext {
   }>
 }
 
+export async function GET(request: NextRequest, context: RouteContext) {
+  try {
+    const { businessId } = await context.params
+
+    const business = await getBusinessById(businessId)
+
+    if (!business) {
+      return NextResponse.json(
+        { error: 'Business not found' },
+        { status: 404 }
+      )
+    }
+
+    return NextResponse.json(business)
+  } catch (error) {
+    console.error('Error fetching business:', error)
+    return NextResponse.json(
+      { error: 'Failed to fetch business' },
+      { status: 500 }
+    )
+  }
+}
+
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
     const { businessId } = await context.params
@@ -77,6 +100,46 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           { status: 400 }
         )
       }
+    }
+
+    // Validate fee configuration fields if custom settings are enabled
+    if (body.use_custom_fee_settings === true) {
+      // Validate platform_fee_type
+      if (!body.platform_fee_type || !['flat', 'percentage', 'higher_of_both'].includes(body.platform_fee_type)) {
+        return NextResponse.json(
+          { error: 'Invalid platform_fee_type. Must be "flat", "percentage", or "higher_of_both"' },
+          { status: 400 }
+        )
+      }
+
+      // Validate flat_fee_amount
+      if (body.flat_fee_amount !== undefined) {
+        const flatFee = parseFloat(body.flat_fee_amount)
+        if (isNaN(flatFee) || flatFee < 0) {
+          return NextResponse.json(
+            { error: 'Invalid flat_fee_amount. Must be a positive number' },
+            { status: 400 }
+          )
+        }
+      }
+
+      // Validate percentage_fee
+      if (body.percentage_fee !== undefined) {
+        const percentageFee = parseFloat(body.percentage_fee)
+        if (isNaN(percentageFee) || percentageFee < 0 || percentageFee > 100) {
+          return NextResponse.json(
+            { error: 'Invalid percentage_fee. Must be between 0 and 100' },
+            { status: 400 }
+          )
+        }
+      }
+    }
+
+    // If resetting to default (use_custom_fee_settings = false), clear custom fee settings
+    if (body.use_custom_fee_settings === false) {
+      body.platform_fee_type = null
+      body.flat_fee_amount = null
+      body.percentage_fee = null
     }
 
     // Update the business

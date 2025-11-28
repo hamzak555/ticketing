@@ -19,9 +19,10 @@ import { Pencil } from 'lucide-react'
 interface PromoCodesTabProps {
   eventId: string
   businessId: string
+  businessSlug: string
 }
 
-export default function PromoCodesTab({ eventId, businessId }: PromoCodesTabProps) {
+export default function PromoCodesTab({ eventId, businessId, businessSlug }: PromoCodesTabProps) {
   const [promoCodes, setPromoCodes] = useState<PromoCode[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -70,7 +71,7 @@ export default function PromoCodesTab({ eventId, businessId }: PromoCodesTabProp
             </CardDescription>
           </div>
           <Button asChild>
-            <Link href={`/business/${businessId}/events/${eventId}/promo/new`}>
+            <Link href={`/${businessSlug}/dashboard/events/${eventId}/promo/new`}>
               Create Promo Code
             </Link>
           </Button>
@@ -123,7 +124,7 @@ export default function PromoCodesTab({ eventId, businessId }: PromoCodesTabProp
                       size="sm"
                       asChild
                     >
-                      <Link href={`/business/${businessId}/events/${eventId}/promo/${promoCode.id}/edit`}>
+                      <Link href={`/${businessSlug}/dashboard/events/${eventId}/promo/${promoCode.id}/edit`}>
                         <Pencil className="h-4 w-4" />
                       </Link>
                     </Button>

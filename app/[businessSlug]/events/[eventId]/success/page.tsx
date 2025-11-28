@@ -6,7 +6,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Ticket, Loader2, Calendar } from 'lucide-react'
+import { Ticket, Loader2, Calendar, FileText } from 'lucide-react'
 
 export default function SuccessPage({ params }: { params: Promise<{ businessSlug: string; eventId: string }> }) {
   const resolvedParams = use(params)
@@ -22,6 +22,7 @@ export default function SuccessPage({ params }: { params: Promise<{ businessSlug
     'rgba(200, 200, 200, 0.1)',
     'rgba(150, 150, 150, 0.1)'
   ])
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false)
 
   useEffect(() => {
     if (paymentIntent) {
@@ -105,6 +106,46 @@ export default function SuccessPage({ params }: { params: Promise<{ businessSlug
       setError(err instanceof Error ? err.message : 'An error occurred')
     } finally {
       setIsVerifying(false)
+    }
+  }
+
+  const viewTickets = async () => {
+    if (!orderDetails) return
+
+    setIsGeneratingPDF(true)
+    try {
+      const response = await fetch('/api/tickets/generate-pdf', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          orderId: orderDetails.orderId,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to generate ticket PDF')
+      }
+
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `tickets-${orderDetails.eventTitle.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.pdf`
+      link.style.display = 'none'
+      document.body.appendChild(link)
+      link.click()
+
+      setTimeout(() => {
+        document.body.removeChild(link)
+        URL.revokeObjectURL(url)
+      }, 100)
+    } catch (error) {
+      console.error('Error generating PDF:', error)
+      alert('Failed to generate ticket PDF. Please try again.')
+    } finally {
+      setIsGeneratingPDF(false)
     }
   }
 
@@ -286,16 +327,31 @@ export default function SuccessPage({ params }: { params: Promise<{ businessSlug
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-4">
-            <Button onClick={addToCalendar} variant="outline" className="flex-1">
-              <Calendar className="mr-2 h-4 w-4" />
-              Add to Calendar
+          <div className="flex flex-col gap-4">
+            <Button onClick={viewTickets} disabled={isGeneratingPDF} className="w-full">
+              {isGeneratingPDF ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Generating PDF...
+                </>
+              ) : (
+                <>
+                  <FileText className="mr-2 h-4 w-4" />
+                  View Tickets
+                </>
+              )}
             </Button>
-            <Button asChild variant="outline" className="flex-1 bg-white dark:bg-white text-black hover:bg-gray-100 hover:text-black dark:hover:text-black">
-              <Link href={`/${resolvedParams.businessSlug}`}>
-                View More Events
-              </Link>
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-4">
+              <Button onClick={addToCalendar} variant="outline" className="flex-1">
+                <Calendar className="mr-2 h-4 w-4" />
+                Add to Calendar
+              </Button>
+              <Button asChild variant="outline" className="flex-1 bg-white dark:bg-white text-black hover:bg-gray-100 dark:hover:bg-gray-100 hover:text-black dark:hover:text-black">
+                <Link href={`/${resolvedParams.businessSlug}`}>
+                  View More Events
+                </Link>
+              </Button>
+            </div>
           </div>
         </CardContent>
         </Card>

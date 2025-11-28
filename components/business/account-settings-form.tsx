@@ -5,31 +5,45 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 import { toast } from 'sonner'
+import { AddressAutocomplete } from '@/components/business/address-autocomplete'
+import { GoogleMapsProvider } from '@/components/providers/google-maps-provider'
+import { LogoUpload } from '@/components/business/logo-upload'
+import { ThemeColorPicker } from '@/components/business/theme-color-picker'
 
 interface AccountSettingsFormProps {
   businessId: string
+  businessSlug: string
   business: {
     name: string
+    logo_url: string | null
+    theme_color: string
     contact_email: string | null
     contact_phone: string | null
     address: string | null
+    address_latitude: number | null
+    address_longitude: number | null
+    google_place_id: string | null
     website: string | null
     instagram: string | null
     tiktok: string | null
   }
 }
 
-export function AccountSettingsForm({ businessId, business }: AccountSettingsFormProps) {
+export function AccountSettingsForm({ businessId, businessSlug, business }: AccountSettingsFormProps) {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
 
   const [formData, setFormData] = useState({
     name: business.name || '',
+    logo_url: business.logo_url,
+    theme_color: business.theme_color || '#3b82f6',
     contact_email: business.contact_email || '',
     contact_phone: business.contact_phone || '',
     address: business.address || '',
+    address_latitude: business.address_latitude,
+    address_longitude: business.address_longitude,
+    google_place_id: business.google_place_id,
     website: business.website || '',
     instagram: business.instagram || '',
     tiktok: business.tiktok || '',
@@ -46,8 +60,9 @@ export function AccountSettingsForm({ businessId, business }: AccountSettingsFor
         body: JSON.stringify(formData),
       })
 
+      const data = await response.json()
+
       if (!response.ok) {
-        const data = await response.json()
         throw new Error(data.error || 'Failed to update account settings')
       }
 
@@ -62,6 +77,21 @@ export function AccountSettingsForm({ businessId, business }: AccountSettingsFor
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Business Logo */}
+      <LogoUpload
+        businessId={businessId}
+        currentLogoUrl={formData.logo_url}
+        onLogoChange={(url) => setFormData({ ...formData, logo_url: url })}
+        disabled={isLoading}
+      />
+
+      {/* Theme Color */}
+      <ThemeColorPicker
+        value={formData.theme_color}
+        onChange={(color) => setFormData({ ...formData, theme_color: color })}
+        disabled={isLoading}
+      />
+
       {/* Business Name */}
       <div className="space-y-2">
         <Label htmlFor="name">Business Name</Label>
@@ -102,16 +132,21 @@ export function AccountSettingsForm({ businessId, business }: AccountSettingsFor
       </div>
 
       {/* Address */}
-      <div className="space-y-2">
-        <Label htmlFor="address">Address</Label>
-        <Textarea
-          id="address"
+      <GoogleMapsProvider>
+        <AddressAutocomplete
           value={formData.address}
-          onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-          placeholder="123 Main Street, City, State, ZIP"
-          rows={3}
+          onChange={(address, placeId, lat, lng) =>
+            setFormData({
+              ...formData,
+              address,
+              google_place_id: placeId,
+              address_latitude: lat,
+              address_longitude: lng,
+            })
+          }
+          disabled={isLoading}
         />
-      </div>
+      </GoogleMapsProvider>
 
       {/* Website */}
       <div className="space-y-2">

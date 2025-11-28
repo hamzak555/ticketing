@@ -179,3 +179,122 @@ export async function getTicketStats(eventId: string) {
 
   return stats
 }
+
+export interface TicketWithDetails {
+  id: string
+  ticket_number: string
+  ticket_type_id: string | null
+  price: number
+  status: string
+  checked_in_at: string | null
+  created_at: string
+  order_id: string
+  order: {
+    id: string
+    order_number: string
+    customer_name: string
+    customer_email: string
+    customer_phone: string | null
+  }
+  event: {
+    id: string
+    title: string
+    event_date: string
+  }
+  ticket_type: {
+    name: string
+  } | null
+}
+
+/**
+ * Get all tickets for a business with order and event details
+ */
+export async function getTicketsByBusinessId(businessId: string): Promise<TicketWithDetails[]> {
+  const supabase = await createServerClient()
+
+  // Get all tickets for events belonging to this business
+  const { data: tickets, error } = await supabase
+    .from('tickets')
+    .select(`
+      id,
+      ticket_number,
+      ticket_type_id,
+      price,
+      status,
+      checked_in_at,
+      created_at,
+      order_id,
+      order:orders!inner (
+        id,
+        order_number,
+        customer_name,
+        customer_email,
+        customer_phone,
+        event:events!inner (
+          id,
+          title,
+          event_date,
+          business_id
+        )
+      )
+    `)
+    .eq('order.event.business_id', businessId)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('Error fetching tickets:', error)
+    throw new Error('Failed to fetch tickets')
+  }
+
+  if (!tickets || tickets.length === 0) {
+    return []
+  }
+
+  // Manually fetch ticket types if needed
+  const ticketTypeIds = tickets
+    .map(t => t.ticket_type_id)
+    .filter(Boolean) as string[]
+
+  let ticketTypesMap = new Map<string, { name: string }>()
+
+  if (ticketTypeIds.length > 0) {
+    const { data: ticketTypes } = await supabase
+      .from('ticket_types')
+      .select('id, name')
+      .in('id', ticketTypeIds)
+
+    if (ticketTypes) {
+      ticketTypesMap = new Map(ticketTypes.map(tt => [tt.id, { name: tt.name }]))
+    }
+  }
+
+  // Transform the data to flatten the structure
+  return tickets.map(ticket => {
+    const order = Array.isArray(ticket.order) ? ticket.order[0] : ticket.order
+    const event = Array.isArray(order.event) ? order.event[0] : order.event
+
+    return {
+      id: ticket.id,
+      ticket_number: ticket.ticket_number,
+      ticket_type_id: ticket.ticket_type_id,
+      price: ticket.price,
+      status: ticket.status,
+      checked_in_at: ticket.checked_in_at,
+      created_at: ticket.created_at,
+      order_id: ticket.order_id,
+      order: {
+        id: order.id,
+        order_number: order.order_number,
+        customer_name: order.customer_name,
+        customer_email: order.customer_email,
+        customer_phone: order.customer_phone,
+      },
+      event: {
+        id: event.id,
+        title: event.title,
+        event_date: event.event_date,
+      },
+      ticket_type: ticket.ticket_type_id ? ticketTypesMap.get(ticket.ticket_type_id) || null : null,
+    }
+  })
+}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getTicketTypes } from '@/lib/db/ticket-types'
+import { getBusinessFeeSettings } from '@/lib/db/platform-settings'
 
 export async function GET(
   request: NextRequest,
@@ -42,10 +43,14 @@ export async function GET(
     // Get ticket types for this event
     const ticketTypes = await getTicketTypes(eventId)
 
+    // Get business-specific fee settings (custom or global)
+    const feeSettings = await getBusinessFeeSettings(business)
+
     return NextResponse.json({
       event,
       business,
       ticketTypes: ticketTypes.filter(tt => tt.is_active),
+      platformSettings: feeSettings,
     })
   } catch (error) {
     console.error('Error fetching event:', error)

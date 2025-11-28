@@ -37,10 +37,43 @@ export async function GET(request: NextRequest) {
       ticketTypes: ticketTypesJson,
       quantity, // Legacy field
       promoCodeId,
+      promoCode: promoCodeUsed,
+      ticketSubtotal: ticketSubtotalStr,
       discountAmount: discountAmountStr,
+      taxAmount: taxAmountStr,
+      taxPercentage: taxPercentageStr,
+      platformFee: platformFeeStr,
+      stripeFee: stripeFeeStr,
     } = paymentIntent.metadata
 
     const supabase = await createClient()
+
+    // Check if order already exists for this payment intent (idempotency check)
+    const { data: existingOrder, error: existingOrderError } = await supabase
+      .from('orders')
+      .select('*, events(title, event_date, event_time, location, image_url)')
+      .eq('stripe_payment_intent_id', paymentIntentId)
+      .single()
+
+    // If order exists, return it (prevents duplicate orders from page refreshes)
+    if (existingOrder && !existingOrderError) {
+      console.log('Order already exists for payment intent:', paymentIntentId)
+      return NextResponse.json({
+        success: true,
+        orderId: existingOrder.id,
+        orderNumber: existingOrder.order_number,
+        eventTitle: existingOrder.events.title,
+        eventDate: existingOrder.events.event_date,
+        eventTime: existingOrder.events.event_time,
+        eventLocation: existingOrder.events.location,
+        eventImageUrl: existingOrder.events.image_url,
+        quantity: existingOrder.quantity,
+        amount: existingOrder.total,
+        customerName: existingOrder.customer_name,
+        customerEmail: existingOrder.customer_email,
+        paymentIntentId: paymentIntent.id,
+      })
+    }
 
     // Get event details
     const { data: event, error: eventError } = await supabase
@@ -80,10 +113,14 @@ export async function GET(request: NextRequest) {
         .eq('id', eventId)
     }
 
-    // Calculate discount and subtotal
+    // Get amounts from metadata
+    const subtotal = ticketSubtotalStr ? parseFloat(ticketSubtotalStr) : 0
     const discountAmount = discountAmountStr ? parseFloat(discountAmountStr) : 0
+    const taxAmount = taxAmountStr ? parseFloat(taxAmountStr) : 0
+    const taxPercentage = taxPercentageStr ? parseFloat(taxPercentageStr) : 0
+    const platformFee = platformFeeStr ? parseFloat(platformFeeStr) : 0
+    const stripeFee = stripeFeeStr ? parseFloat(stripeFeeStr) : 0
     const totalAmount = paymentIntent.amount / 100 // Convert from cents to dollars
-    const subtotal = totalAmount + discountAmount
 
     // Increment promo code usage if one was applied
     if (promoCodeId) {
@@ -97,9 +134,11 @@ export async function GET(request: NextRequest) {
 
     // Create order record
     const orderNumber = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`
+    const ticketQuantity = parseInt(totalTickets)
 
+    let orderId: string | null = null
     try {
-      await supabase
+      const { data: orderData, error: orderInsertError } = await supabase
         .from('orders')
         .insert({
           order_number: orderNumber,
@@ -107,11 +146,89 @@ export async function GET(request: NextRequest) {
           customer_name: customerName,
           customer_email: customerEmail,
           customer_phone: paymentIntent.metadata.customerPhone || null,
+          quantity: ticketQuantity,
           subtotal: subtotal,
           discount_amount: discountAmount,
+          promo_code: promoCodeUsed || null,
+          tax_amount: taxAmount,
+          tax_percentage: taxPercentage,
+          platform_fee: platformFee,
+          stripe_fee: stripeFee,
           total: totalAmount,
+          stripe_payment_intent_id: paymentIntentId,
           status: 'completed',
         })
+        .select()
+        .single()
+
+      if (!orderInsertError && orderData) {
+        orderId = orderData.id
+
+        // Create individual tickets
+        const ticketsToCreate = []
+
+        // If ticket types are used, assign tickets to their types
+        if (hasTicketTypes === 'true' && ticketTypesJson) {
+          try {
+            const ticketTypesMetadata = JSON.parse(ticketTypesJson)
+
+            // Create tickets for each ticket type
+            for (const [ticketTypeId, data] of Object.entries(ticketTypesMetadata)) {
+              const { quantity: typeQuantity, price } = data as { name: string; price: number; quantity: number }
+
+              for (let i = 0; i < typeQuantity; i++) {
+                const ticketNumber = `TKT-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`
+                const qrCodeData = `${ticketNumber}|${eventId}|${orderId}`
+
+                ticketsToCreate.push({
+                  order_id: orderId,
+                  event_id: eventId,
+                  ticket_type_id: ticketTypeId,
+                  ticket_number: ticketNumber,
+                  price: price,
+                  qr_code_data: qrCodeData,
+                  status: 'valid'
+                })
+              }
+            }
+          } catch (error) {
+            console.error('Error creating tickets with types:', error)
+            // Fallback to creating tickets without types
+            for (let i = 0; i < ticketQuantity; i++) {
+              const ticketNumber = `TKT-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`
+              const qrCodeData = `${ticketNumber}|${eventId}|${orderId}`
+
+              ticketsToCreate.push({
+                order_id: orderId,
+                event_id: eventId,
+                ticket_number: ticketNumber,
+                price: subtotal / ticketQuantity,
+                qr_code_data: qrCodeData,
+                status: 'valid'
+              })
+            }
+          }
+        } else {
+          // Legacy: Create tickets without ticket types
+          for (let i = 0; i < ticketQuantity; i++) {
+            const ticketNumber = `TKT-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`
+            const qrCodeData = `${ticketNumber}|${eventId}|${orderId}`
+
+            ticketsToCreate.push({
+              order_id: orderId,
+              event_id: eventId,
+              ticket_number: ticketNumber,
+              price: subtotal / ticketQuantity,
+              qr_code_data: qrCodeData,
+              status: 'valid'
+            })
+          }
+        }
+
+        await supabase
+          .from('tickets')
+          .insert(ticketsToCreate)
+      }
     } catch (error) {
       console.error('Error creating order record:', error)
       // Continue anyway - payment succeeded and tickets updated
@@ -120,6 +237,8 @@ export async function GET(request: NextRequest) {
     // Return order details
     return NextResponse.json({
       success: true,
+      orderId: orderId,
+      orderNumber: orderNumber,
       eventTitle: event.title,
       eventDate: event.event_date,
       eventTime: event.event_time,

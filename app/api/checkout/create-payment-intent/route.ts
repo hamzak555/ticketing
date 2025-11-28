@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { stripe } from '@/lib/stripe/server'
 import { createClient } from '@/lib/supabase/server'
-import { getPlatformSettings, calculatePlatformFee } from '@/lib/db/platform-settings'
+import { getBusinessFeeSettings, calculatePlatformFee } from '@/lib/db/platform-settings'
 import { getTicketType } from '@/lib/db/ticket-types'
 import { getPromoCodeById } from '@/lib/db/promo-codes'
 import { calculateStripeFee } from '@/lib/utils/stripe-fees'
@@ -93,7 +93,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      description = `${totalTickets} ticket${totalTickets > 1 ? 's' : ''} for ${event.title}`
+      description = `[${event.businesses.name}] ${totalTickets} ticket${totalTickets > 1 ? 's' : ''} for ${event.title}`
     }
     // Handle legacy single-price tickets
     else if (quantity) {
@@ -107,13 +107,16 @@ export async function POST(request: NextRequest) {
       const unitAmount = Math.round(event.ticket_price * 100)
       totalAmount = unitAmount * quantity
       totalTickets = quantity
-      description = `${quantity}x ${event.title}`
+      description = `[${event.businesses.name}] ${quantity}x ${event.title}`
     } else {
       return NextResponse.json(
         { error: 'No tickets selected' },
         { status: 400 }
       )
     }
+
+    // Store the original ticket subtotal before any discounts
+    const ticketSubtotalInCents = totalAmount
 
     // Apply promo code discount if provided
     let discountAmount = 0
@@ -142,11 +145,18 @@ export async function POST(request: NextRequest) {
     const taxPercentage = event.businesses.tax_percentage || 0
     const taxInCents = Math.round((taxableAmountInDollars * taxPercentage))
 
-    // Get platform settings and calculate platform fee
-    const platformSettings = await getPlatformSettings()
+    // Get business-specific fee settings (custom or global) and calculate platform fee
+    // Platform fee should be calculated on the amount INCLUDING tax
+    const feeSettings = await getBusinessFeeSettings(event.businesses)
     const subtotalInDollars = (totalAmount + discountAmount) / 100
-    const platformFeeInDollars = calculatePlatformFee(subtotalInDollars / totalTickets, totalTickets, platformSettings)
-    const platformFeeInCents = Math.round(platformFeeInDollars * 100)
+    const taxableAmountWithTaxInCents = totalAmount + taxInCents
+    const platformFeeInCents = calculatePlatformFee(
+      subtotalInDollars / totalTickets,
+      totalTickets,
+      feeSettings,
+      taxableAmountWithTaxInCents
+    )
+    const platformFeeInDollars = platformFeeInCents / 100
 
     // Start with ticket amount after discount, plus tax
     let finalChargeAmount = totalAmount + taxInCents
@@ -161,15 +171,42 @@ export async function POST(request: NextRequest) {
 
     // Add Stripe fee if customer pays it
     if (event.businesses.stripe_fee_payer === 'customer') {
-      const stripeFeeInDollars = calculateStripeFee(finalChargeAmount / 100)
-      stripeFeeForCustomer = Math.round(stripeFeeInDollars * 100)
-      finalChargeAmount += stripeFeeForCustomer
+      // Use "gross up" formula to calculate the Stripe fee
+      // Since Stripe calculates their fee on the final amount (including their fee),
+      // we need to solve: final = base + (final * 0.029 + 0.30)
+      // Which gives us: final = (base + 0.30) / (1 - 0.029)
+      const baseInDollars = finalChargeAmount / 100
+      const finalWithStripeFee = (baseInDollars + 0.30) / (1 - 0.029)
+      stripeFeeForCustomer = Math.round((finalWithStripeFee - baseInDollars) * 100)
+      finalChargeAmount = Math.round(finalWithStripeFee * 100)
     }
 
-    // Application fee is always the platform fee (whether customer or business pays it)
-    // This ensures we collect our fee from the transaction
+    // Calculate what the business receives and the actual Stripe fee
+    // This depends on who pays which fees
+    let transferAmount: number
+    let actualStripeFeeInCents: number
+
+    if (event.businesses.stripe_fee_payer === 'customer') {
+      // Customer is paying the Stripe fee (it's already included in finalChargeAmount)
+      // Platform gets: platform fee + stripe fee (customer paid)
+      // Business gets: finalChargeAmount - platform fee - stripe fee
+      actualStripeFeeInCents = stripeFeeForCustomer
+      transferAmount = finalChargeAmount - platformFeeInCents - stripeFeeForCustomer
+    } else {
+      // Business is paying the Stripe fee
+      // Stripe will deduct their fee from finalChargeAmount automatically
+      // We need to calculate Stripe's actual fee on finalChargeAmount
+      actualStripeFeeInCents = Math.round((finalChargeAmount * 0.029) + 30)
+
+      // Platform gets: platform fee only (Stripe takes their fee separately)
+      // Business gets: finalChargeAmount - actual Stripe fee - platform fee
+      transferAmount = finalChargeAmount - actualStripeFeeInCents - platformFeeInCents
+    }
 
     // Create Stripe PaymentIntent
+    // Note: We use transfer_data.amount to specify exactly what the business receives
+    // The platform automatically receives: (charge - Stripe fee - transfer amount)
+    // on_behalf_of shifts chargeback liability to the business
     const paymentIntent = await stripe.paymentIntents.create({
       amount: finalChargeAmount,
       currency: 'usd',
@@ -177,21 +214,25 @@ export async function POST(request: NextRequest) {
         enabled: true,
         allow_redirects: 'never',
       },
-      application_fee_amount: platformFeeInCents,
+      on_behalf_of: event.businesses.stripe_account_id,
       transfer_data: {
         destination: event.businesses.stripe_account_id,
+        amount: transferAmount, // Exact amount business receives
       },
       metadata: {
         eventId: event.id,
         businessId: event.business_id,
+        businessName: event.businesses.name,
         totalTickets: totalTickets.toString(),
         customerName,
         customerEmail,
         customerPhone: customerPhone || '',
+        // Store ticket subtotal (before discount, tax, fees)
+        ticketSubtotal: (ticketSubtotalInCents / 100).toFixed(2),
         // Store fee information
         platformFee: platformFeeInDollars.toFixed(2),
         platformFeeForCustomer: (platformFeeForCustomer / 100).toFixed(2),
-        stripeFee: (stripeFeeForCustomer / 100).toFixed(2),
+        stripeFee: (actualStripeFeeInCents / 100).toFixed(2), // Actual Stripe fee (regardless of who pays)
         stripeFeePayer: event.businesses.stripe_fee_payer,
         platformFeePayer: event.businesses.platform_fee_payer,
         // Store tax information

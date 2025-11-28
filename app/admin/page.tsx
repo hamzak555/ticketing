@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { AdminDashboardLayout } from '@/components/admin/admin-dashboard-layout'
 
 export default async function AdminDashboardPage() {
   // TODO: Fetch actual statistics from Supabase
@@ -12,7 +13,8 @@ export default async function AdminDashboardPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <AdminDashboardLayout>
+      <div className="space-y-8">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Admin Dashboard</h1>
@@ -100,5 +102,6 @@ export default async function AdminDashboardPage() {
         </Card>
       </div>
     </div>
+    </AdminDashboardLayout>
   )
 }

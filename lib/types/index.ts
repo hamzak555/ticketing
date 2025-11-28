@@ -17,8 +17,12 @@ export interface Business {
   contact_phone: string | null
   website: string | null
   address: string | null
+  address_latitude: number | null // Latitude for Google Maps
+  address_longitude: number | null // Longitude for Google Maps
+  google_place_id: string | null // Google Places API place ID
   instagram: string | null
   tiktok: string | null
+  theme_color: string // Hex color code for business theme (used in background glow effects)
   user_id: string | null // Reference to the business owner's user account
   is_active: boolean
   stripe_account_id: string | null // Stripe Connect account ID
@@ -26,6 +30,10 @@ export interface Business {
   stripe_fee_payer: 'customer' | 'business' // Who pays the Stripe processing fees
   platform_fee_payer: 'customer' | 'business' // Who pays the platform fees
   tax_percentage: number // Tax percentage to apply (0-100)
+  use_custom_fee_settings: boolean // If true, use business-specific fee settings; if false, use global platform settings
+  platform_fee_type: 'flat' | 'percentage' | 'higher_of_both' | null // Custom fee calculation method (overrides global if use_custom_fee_settings is true)
+  flat_fee_amount: number | null // Custom flat fee amount (overrides global if use_custom_fee_settings is true)
+  percentage_fee: number | null // Custom percentage fee (overrides global if use_custom_fee_settings is true)
   created_at: string
   updated_at: string
 }
@@ -97,7 +105,19 @@ export interface Order {
   discount_code_id: string | null
   discount_amount: number
   total: number
-  status: 'pending' | 'completed' | 'cancelled' | 'refunded'
+  stripe_payment_intent_id: string | null
+  status: 'pending' | 'completed' | 'cancelled' | 'refunded' | 'partially_refunded'
+  created_at: string
+  updated_at: string
+}
+
+export interface Refund {
+  id: string
+  order_id: string
+  amount: number
+  reason: string | null
+  stripe_refund_id: string | null
+  status: 'pending' | 'succeeded' | 'failed' | 'cancelled'
   created_at: string
   updated_at: string
 }
@@ -108,6 +128,28 @@ export interface PlatformSettings {
   flat_fee_amount: number
   percentage_fee: number
   platform_stripe_account_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface BusinessUser {
+  id: string
+  business_id: string
+  email: string
+  password_hash: string
+  name: string
+  role: 'admin' | 'regular'
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface AdminUser {
+  id: string
+  email: string
+  password_hash: string
+  name: string
+  is_active: boolean
   created_at: string
   updated_at: string
 }
@@ -154,6 +196,16 @@ export interface Database {
         Row: PlatformSettings
         Insert: Omit<PlatformSettings, 'id' | 'created_at' | 'updated_at'>
         Update: Partial<Omit<PlatformSettings, 'id' | 'created_at' | 'updated_at'>>
+      }
+      business_users: {
+        Row: BusinessUser
+        Insert: Omit<BusinessUser, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<BusinessUser, 'id' | 'created_at' | 'updated_at'>>
+      }
+      admin_users: {
+        Row: AdminUser
+        Insert: Omit<AdminUser, 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Omit<AdminUser, 'id' | 'created_at' | 'updated_at'>>
       }
     }
   }

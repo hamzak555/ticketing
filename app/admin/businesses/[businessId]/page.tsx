@@ -6,6 +6,7 @@ import { Separator } from '@/components/ui/separator'
 import Link from 'next/link'
 import { AdminBusinessEditForm } from '@/components/admin/admin-business-edit-form'
 import { DeleteBusinessButton } from '@/components/admin/delete-business-button'
+import { AdminDashboardLayout } from '@/components/admin/admin-dashboard-layout'
 
 // Force dynamic rendering to always fetch fresh data
 export const dynamic = 'force-dynamic'
@@ -27,7 +28,8 @@ export default async function AdminBusinessEditPage({ params }: AdminBusinessEdi
   }
 
   return (
-    <div className="space-y-6">
+    <AdminDashboardLayout>
+      <div className="space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="sm" asChild>
           <Link href="/admin/businesses">← Back to Businesses</Link>
@@ -72,6 +74,7 @@ export default async function AdminBusinessEditPage({ params }: AdminBusinessEdi
           </div>
         </CardContent>
       </Card>
-    </div>
+      </div>
+    </AdminDashboardLayout>
   )
 }
